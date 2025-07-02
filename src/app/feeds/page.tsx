@@ -23,12 +23,17 @@ export default function FeedsPage() {
   const [isReplyDialogOpen, setIsReplyDialogOpen] = useState(false)
 
   const { data: targetsData, isLoading: isTargetsLoading } = useTargets()
-  const { data: tweetsData, isLoading: isTweetsLoading, refetch } = useTweets({
+  const tweetFilters = {
     targetUserId: selectedTarget !== 'all' ? selectedTarget : undefined,
     sortBy,
     sentiment: filterSentiment !== 'all' ? filterSentiment : undefined,
     limit: 50 // Get more tweets
-  })
+  }
+  
+  console.log('🔍 Feed page - Tweet filters:', tweetFilters)
+  console.log('🔍 Feed page - Selected target:', selectedTarget)
+  
+  const { data: tweetsData, isLoading: isTweetsLoading, refetch } = useTweets(tweetFilters)
   const scrapeTweets = useScrapeTweets()
 
   const targets = targetsData || []
