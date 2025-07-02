@@ -1,0 +1,138 @@
+import { auth } from '@clerk/nextjs/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { z } from 'zod'
+
+const createTargetSchema = z.object({
+  targetUsername: z.string().min(1).max(15),
+  xAccountId: z.string().cuid(),
+  notes: z.string().optional(),
+})
+
+export async function GET() {
+  try {
+    const { userId: clerkId } = await auth()
+
+    if (!clerkId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+    })
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    const targets = await prisma.targetUser.findMany({
+      where: { userId: user.id },
+      include: {
+        xAccount: {
+          select: {
+            username: true,
+          },
+        },
+        _count: {
+          select: {
+            tweets: true,
+            analytics: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    return NextResponse.json(targets)
+  } catch (error) {
+    console.error('Error fetching targets:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const { userId: clerkId } = await auth()
+
+    if (!clerkId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+    })
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    const body = await request.json()
+    const validatedData = createTargetSchema.parse(body)
+
+    // Check if X account belongs to user
+    const xAccount = await prisma.xAccount.findFirst({
+      where: {
+        id: validatedData.xAccountId,
+        userId: user.id,
+      },
+    })
+
+    if (!xAccount) {
+      return NextResponse.json(
+        { error: 'X account not found or not owned by user' },
+        { status: 404 }
+      )
+    }
+
+    // Check if target already exists for this user
+    const existingTarget = await prisma.targetUser.findUnique({
+      where: {
+        userId_targetUsername: {
+          userId: user.id,
+          targetUsername: validatedData.targetUsername,
+        },
+      },
+    })
+
+    if (existingTarget) {
+      return NextResponse.json(
+        { error: 'Target user already exists' },
+        { status: 400 }
+      )
+    }
+
+    const target = await prisma.targetUser.create({
+      data: {
+        userId: user.id,
+        xAccountId: validatedData.xAccountId,
+        targetUsername: validatedData.targetUsername,
+        notes: validatedData.notes,
+      },
+      include: {
+        xAccount: {
+          select: {
+            username: true,
+          },
+        },
+      },
+    })
+
+    return NextResponse.json(target, { status: 201 })
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Invalid data', details: error.errors },
+        { status: 400 }
+      )
+    }
+
+    console.error('Error creating target:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}

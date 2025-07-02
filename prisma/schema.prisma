@@ -1,0 +1,192 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                      String   @id @default(cuid())
+  email                   String   @unique
+  name                    String?
+  clerkId                 String   @unique
+  subscriptionTier        String   @default("free")
+  notificationPreferences Json?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  xAccounts    XAccount[]
+  targetUsers  TargetUser[]
+  replyQueue   ReplyQueue[]
+  templates    ReplyTemplate[]
+  analytics    EngagementAnalytics[]
+  compliance   ComplianceLog[]
+  subscription Subscription?
+  usage        UsageMetric[]
+
+  @@map("users")
+}
+
+model XAccount {
+  id           String    @id @default(cuid())
+  userId       String
+  xUserId      String    @unique
+  username     String
+  accessToken  String    // encrypted
+  refreshToken String?   // encrypted
+  isActive     Boolean   @default(true)
+  lastActivity DateTime?
+  createdAt    DateTime  @default(now())
+
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targetUsers  TargetUser[]
+  replyQueue   ReplyQueue[]
+  compliance   ComplianceLog[]
+
+  @@map("x_accounts")
+}
+
+model TargetUser {
+  id              String    @id @default(cuid())
+  userId          String
+  xAccountId      String
+  targetUsername  String
+  targetUserId    String?
+  isActive        Boolean   @default(true)
+  lastScraped     DateTime?
+  engagementScore Float     @default(0)
+  notes           String?
+  createdAt       DateTime  @default(now())
+
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  xAccount  XAccount              @relation(fields: [xAccountId], references: [id], onDelete: Cascade)
+  tweets    Tweet[]
+  analytics EngagementAnalytics[]
+
+  @@unique([userId, targetUsername])
+  @@map("target_users")
+}
+
+model Tweet {
+  id           String    @id @default(cuid())
+  tweetId      String    @unique
+  targetUserId String
+  content      String
+  authorUsername String
+  publishedAt  DateTime
+  likeCount    Int       @default(0)
+  replyCount   Int       @default(0)
+  retweetCount Int       @default(0)
+  sentimentScore Float?
+  isDeleted    Boolean   @default(false)
+  scrapedAt    DateTime  @default(now())
+
+  targetUser TargetUser   @relation(fields: [targetUserId], references: [id], onDelete: Cascade)
+  replies    ReplyQueue[]
+
+  @@map("tweets")
+}
+
+model ReplyQueue {
+  id           String    @id @default(cuid())
+  userId       String
+  xAccountId   String
+  tweetId      String
+  replyContent String
+  replyType    String    @default("ai_generated")
+  scheduledFor DateTime
+  status       String    @default("pending") // pending, sent, failed, cancelled
+  retryCount   Int       @default(0)
+  errorMessage String?
+  sentAt       DateTime?
+  createdAt    DateTime  @default(now())
+
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  xAccount  XAccount              @relation(fields: [xAccountId], references: [id], onDelete: Cascade)
+  tweet     Tweet                 @relation(fields: [tweetId], references: [id], onDelete: Cascade)
+  analytics EngagementAnalytics[]
+
+  @@map("reply_queue")
+}
+
+model EngagementAnalytics {
+  id             String   @id @default(cuid())
+  userId         String
+  targetUserId   String?
+  replyId        String?
+  engagementType String   // 'like', 'reply', 'retweet', 'mention'
+  engagementValue Int     @default(1)
+  trackedAt      DateTime @default(now())
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targetUser TargetUser? @relation(fields: [targetUserId], references: [id], onDelete: Cascade)
+  reply      ReplyQueue? @relation(fields: [replyId], references: [id], onDelete: Cascade)
+
+  @@map("engagement_analytics")
+}
+
+model ComplianceLog {
+  id               String   @id @default(cuid())
+  userId           String
+  xAccountId       String?
+  actionType       String
+  complianceStatus String   // 'compliant', 'warning', 'violation'
+  details          Json?
+  timestamp        DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  xAccount XAccount? @relation(fields: [xAccountId], references: [id], onDelete: Cascade)
+
+  @@map("compliance_logs")
+}
+
+model ReplyTemplate {
+  id              String  @id @default(cuid())
+  userId          String
+  name            String
+  templateContent String
+  category        String?
+  successRate     Float   @default(0)
+  usageCount      Int     @default(0)
+  isActive        Boolean @default(true)
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("reply_templates")
+}
+
+model Subscription {
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  stripeSubscriptionId String?
+  planName            String
+  status              String
+  currentPeriodStart  DateTime?
+  currentPeriodEnd    DateTime?
+  cancelAtPeriodEnd   Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model UsageMetric {
+  id          String   @id @default(cuid())
+  userId      String
+  metricType  String   // 'replies_sent', 'targets_monitored', 'api_calls'
+  metricValue Int
+  periodStart DateTime
+  periodEnd   DateTime
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("usage_metrics")
+}
