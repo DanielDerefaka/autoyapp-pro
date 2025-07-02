@@ -146,7 +146,7 @@ export const useAuthSignUp = () => {
   });
 
   // Generate email verification code
-  const onGenerateCode = async (email: string, password: string, userData) => {
+  const onGenerateCode = async (email: string, password: string, userData: any) => {
     if (!isLoaded) {
       showToast("error", "Authentication service not loaded");
       return;
