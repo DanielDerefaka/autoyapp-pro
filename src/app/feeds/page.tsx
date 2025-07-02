@@ -25,8 +25,8 @@ export default function FeedsPage() {
   const { data: targetsData, isLoading: isTargetsLoading } = useTargets()
   const tweetFilters = {
     targetUserId: selectedTarget !== 'all' ? selectedTarget : undefined,
-    sortBy,
-    sentiment: filterSentiment !== 'all' ? filterSentiment : undefined,
+    sortBy: sortBy as 'recent' | 'popular' | 'engagement',
+    sentiment: filterSentiment !== 'all' ? (filterSentiment as 'positive' | 'negative' | 'neutral') : undefined,
     limit: 50 // Get more tweets
   }
   
