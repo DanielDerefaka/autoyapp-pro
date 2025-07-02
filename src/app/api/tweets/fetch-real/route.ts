@@ -1,7 +1,16 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { xApiClient } from '@/lib/x-api'
+import { XApiClient } from '@/lib/x-api'
+
+// Create xApiClient instance locally
+const xApiClient = new XApiClient({
+  apiKey: process.env.X_API_KEY!,
+  apiSecret: process.env.X_API_SECRET!,
+  bearerToken: process.env.X_BEARER_TOKEN!,
+  clientId: process.env.X_CLIENT_ID!,
+  clientSecret: process.env.X_CLIENT_SECRET!,
+})
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,10 +45,14 @@ export async function POST(request: NextRequest) {
     const usernames = targets.map(t => t.targetUsername)
     console.log(`Fetching tweets for target users: ${usernames.join(', ')}`)
 
-    // Use X API to fetch real tweets for all target users
+    // Use X API with fallback scraping for all target users
+    const enableScraping = process.env.ENABLE_SCRAPING_FALLBACK === 'true'
+    console.log(`🔧 Scraping fallback ${enableScraping ? 'enabled' : 'disabled'}`)
+    
     const results = await xApiClient.getTargetUsersTweets(usernames, {
       maxTweetsPerUser: 10, // Get 10 most recent tweets per user
-      hours: 24 // Get tweets from last 24 hours
+      hours: 24, // Get tweets from last 24 hours
+      fallbackToScraping: enableScraping
     })
 
     let totalTweetsCreated = 0

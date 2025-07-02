@@ -21,6 +21,7 @@ export default function FeedsPage() {
   const [generatedReply, setGeneratedReply] = useState('')
   const [isGeneratingReply, setIsGeneratingReply] = useState(false)
   const [isReplyDialogOpen, setIsReplyDialogOpen] = useState(false)
+  const [scrapingStatus, setScrapingStatus] = useState<any>(null)
 
   const { data: targetsData, isLoading: isTargetsLoading } = useTargets()
   const tweetFilters = {
@@ -43,6 +44,23 @@ export default function FeedsPage() {
   useEffect(() => {
     console.log('Selected target changed to:', selectedTarget)
   }, [selectedTarget])
+
+  // Fetch scraping status
+  const fetchScrapingStatus = async () => {
+    try {
+      const response = await fetch('/api/scraping/status')
+      if (response.ok) {
+        const status = await response.json()
+        setScrapingStatus(status)
+      }
+    } catch (error) {
+      console.error('Failed to fetch scraping status:', error)
+    }
+  }
+
+  useEffect(() => {
+    fetchScrapingStatus()
+  }, [])
 
   // Auto-fetch tweets if we have targets but no tweets
   useEffect(() => {
@@ -139,14 +157,38 @@ export default function FeedsPage() {
       }
 
       if (data.totalNewTweets > 0) {
-        toast.success(`Found ${data.totalNewTweets} new tweets from ${data.results?.length || 0} users!`)
+        const successfulTargets = data.targetResults?.filter(r => !r.error && r.newTweets > 0).length || 0
+        const rapidApiTargets = data.targetResults?.filter(r => r.source === 'rapidapi').length || 0
+        const scrapedTargets = data.targetResults?.filter(r => r.source === 'scraping').length || 0
+        const demoTargets = data.targetResults?.filter(r => r.source === 'demo').length || 0
+        
+        let message = `Found ${data.totalNewTweets} new tweets from ${successfulTargets} users!`
+        
+        const sources = []
+        if (rapidApiTargets > 0) sources.push(`${rapidApiTargets} via RapidAPI`)
+        if (scrapedTargets > 0) sources.push(`${scrapedTargets} via scraping`)
+        if (demoTargets > 0) sources.push(`${demoTargets} demo data`)
+        
+        if (sources.length > 0) {
+          message += ` (${sources.join(', ')})`
+        }
+        
+        toast.success(message)
       } else {
-        toast.info('No new tweets found. Your targets may not have posted recently.')
+        const failedTargets = data.targetResults?.filter(r => r.error).length || 0
+        if (failedTargets > 0) {
+          toast.warning(`No new tweets found. ${failedTargets} users had errors (rate limits or scraping failed).`)
+        } else {
+          toast.info('No new tweets found. Your targets may not have posted recently.')
+        }
       }
       
       // Always refresh to show any existing tweets
       console.log('🔄 Refetching tweets after fetch...')
       refetch()
+      
+      // Refresh scraping status after fetch
+      fetchScrapingStatus()
     } catch (error) {
       console.error('Error fetching real tweets:', error)
       toast.error('Failed to fetch tweets. Please try again or check your setup.')
@@ -212,6 +254,15 @@ export default function FeedsPage() {
         </div>
         
         <div className="flex items-center space-x-3">
+          {scrapingStatus && (
+            <div className="flex items-center space-x-2 text-xs">
+              <div className={`w-2 h-2 rounded-full ${scrapingStatus.canScrapeNow ? 'bg-green-400' : 'bg-yellow-400'}`}></div>
+              <span className="text-gray-500">
+                Scraping: {scrapingStatus.attemptsInLastHour}/{scrapingStatus.maxAttempts}/hr
+              </span>
+            </div>
+          )}
+          
           <Select value={selectedTarget} onValueChange={setSelectedTarget}>
             <SelectTrigger className="w-40 border-gray-200">
               <SelectValue />
