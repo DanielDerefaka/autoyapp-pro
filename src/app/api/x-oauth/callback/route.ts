@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
     console.log('  - Access Token:', tokenResponse.access_token ? `${tokenResponse.access_token.substring(0, 20)}...` : 'null')
     console.log('  - Refresh Token:', tokenResponse.refresh_token ? `${tokenResponse.refresh_token.substring(0, 20)}...` : 'null')
     console.log('  - Token Type:', tokenResponse.token_type)
-    console.log('  - Scope:', tokenResponse.scope)
+    // console.log('  - Scope:', tokenResponse.scope)
 
     // Get user info from X API
     console.log('🔍 Fetching X user info...')

@@ -31,23 +31,17 @@ export interface CreateTargetData {
 // Get all target users
 export function useTargets() {
   return useQuery({
-    queryKey: ['targets', Date.now()], // Add timestamp to prevent caching
+    queryKey: ['targets'],
     queryFn: async (): Promise<TargetUser[]> => {
       const response = await fetch(`/api/targets?_t=${Date.now()}`, {
-        cache: 'no-cache',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        }
+        cache: 'no-cache'
       })
       if (!response.ok) {
         throw new Error('Failed to fetch targets')
       }
       return response.json()
     },
-    staleTime: 0, // No caching
-    gcTime: 0, // Don't keep in memory cache
+    staleTime: 10 * 1000, // 10 seconds minimal caching
   })
 }
 

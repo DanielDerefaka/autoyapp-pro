@@ -34,23 +34,10 @@ export default function FeedsPage() {
   const targets = targetsData || []
   const tweets = tweetsData?.tweets || []
 
-  // Refresh tweets when targets list changes (new target added/removed)
-  useEffect(() => {
-    console.log('Targets changed, invalidating tweets cache')
-    refetch()
-  }, [targets.length, refetch])
-
-  // Refetch tweets when selected target changes
+  // Only refetch when selected target changes (not on every render)
   useEffect(() => {
     console.log('Selected target changed to:', selectedTarget)
-    refetch()
-  }, [selectedTarget, refetch])
-
-  // Refetch tweets when filters change
-  useEffect(() => {
-    console.log('Filter or sort changed, refetching tweets')
-    refetch()
-  }, [sortBy, filterSentiment, refetch])
+  }, [selectedTarget])
 
   // Auto-fetch tweets if we have targets but no tweets
   useEffect(() => {

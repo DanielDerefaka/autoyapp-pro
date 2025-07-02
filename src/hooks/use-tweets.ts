@@ -45,8 +45,10 @@ export interface TweetFilters {
 
 // Get tweets with filters
 export function useTweets(filters: TweetFilters = {}) {
+  const queryKey = ['tweets', JSON.stringify(filters)] // Use stable key
+  
   return useQuery({
-    queryKey: ['tweets', filters, Date.now()], // Add timestamp to prevent caching
+    queryKey,
     queryFn: async (): Promise<TweetsResponse> => {
       console.log('Fetching tweets with filters:', filters)
       const searchParams = new URLSearchParams()
@@ -58,12 +60,7 @@ export function useTweets(filters: TweetFilters = {}) {
       })
       
       const response = await fetch(`/api/tweets?${searchParams}&_t=${Date.now()}`, {
-        cache: 'no-cache', // Prevent browser caching
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        }
+        cache: 'no-cache'
       })
       if (!response.ok) {
         throw new Error('Failed to fetch tweets')
@@ -72,8 +69,7 @@ export function useTweets(filters: TweetFilters = {}) {
       console.log('Fetched tweets:', data)
       return data
     },
-    staleTime: 0, // No caching - always fresh
-    gcTime: 0, // Don't keep in memory cache
+    staleTime: 10 * 1000, // 10 seconds - some minimal caching to prevent infinite loading
     refetchInterval: false,
     refetchOnWindowFocus: false,
     refetchOnMount: true,
