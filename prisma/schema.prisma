@@ -28,6 +28,8 @@ model User {
   compliance   ComplianceLog[]
   subscription Subscription?
   usage        UsageMetric[]
+  replyStyle   ReplyStyle?
+  autopilotSettings AutopilotSettings?
 
   @@map("users")
 }
@@ -189,4 +191,44 @@ model UsageMetric {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("usage_metrics")
+}
+
+model ReplyStyle {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  styles    String   // JSON string containing style configuration
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("reply_styles")
+}
+
+model AutopilotSettings {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  isEnabled             Boolean  @default(false)
+  maxRepliesPerDay      Int      @default(30)
+  maxRepliesPerHour     Int      @default(5)
+  minDelayBetweenReplies Int     @default(360) // seconds (6 minutes)
+  minDelayToSameUser    Int      @default(1800) // seconds (30 minutes)
+  enabledHours          String   @default("09:00-17:00") // JSON string for time ranges
+  enabledDays           String   @default("[1,2,3,4,5]") // JSON array for days of week (1=Monday)
+  targetSentimentFilter String   @default("all") // positive, negative, neutral, all
+  onlyReplyToVerified   Boolean  @default(false)
+  skipRetweets          Boolean  @default(true)
+  skipReplies           Boolean  @default(true)
+  minFollowerCount      Int      @default(0)
+  maxTweetAge           Int      @default(1440) // minutes (24 hours)
+  pauseIfBlocked        Boolean  @default(true)
+  pauseIfRateLimited    Boolean  @default(true)
+  notifyOnPause         Boolean  @default(true)
+  customFilters         String   @default("{}") // JSON for custom filtering rules
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("autopilot_settings")
 }

@@ -17,10 +17,16 @@ export async function POST(request: NextRequest) {
         scheduledFor: {
           lte: new Date(),
         },
+        retryCount: { lt: 3 } // Max 3 retry attempts
       },
       include: {
         tweet: true,
         xAccount: true,
+        user: {
+          include: {
+            autopilotSettings: true
+          }
+        }
       },
       take: 50, // Process in batches
     })
@@ -30,6 +36,22 @@ export async function POST(request: NextRequest) {
 
     for (const reply of pendingReplies) {
       try {
+        // Safety check: If this is an autopilot reply, ensure autopilot is still enabled
+        if (reply.replyType === 'autopilot_generated') {
+          if (!reply.user?.autopilotSettings?.isEnabled) {
+            // Cancel autopilot replies if autopilot is disabled
+            await prisma.replyQueue.update({
+              where: { id: reply.id },
+              data: { 
+                status: 'cancelled',
+                errorMessage: 'Autopilot disabled by user'
+              }
+            })
+            console.log(`⏸️ Cancelled autopilot reply ${reply.id} - autopilot disabled`)
+            continue
+          }
+        }
+
         await QueueManager.addReplyJob({
           replyId: reply.id,
           userId: reply.userId,
@@ -41,6 +63,22 @@ export async function POST(request: NextRequest) {
         processed++
       } catch (error) {
         console.error(`Failed to queue reply ${reply.id}:`, error)
+        
+        // Increment retry count
+        const newRetryCount = (reply.retryCount || 0) + 1
+        await prisma.replyQueue.update({
+          where: { id: reply.id },
+          data: {
+            retryCount: newRetryCount,
+            errorMessage: error instanceof Error ? error.message : 'Unknown error',
+            status: newRetryCount >= 3 ? 'failed' : 'pending',
+            // Reschedule for retry with exponential backoff
+            scheduledFor: newRetryCount < 3 
+              ? new Date(Date.now() + Math.pow(2, newRetryCount) * 60000) // 2^n minutes
+              : reply.scheduledFor
+          }
+        })
+        
         failed++
       }
     }

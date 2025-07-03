@@ -1,16 +1,17 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { XApiClient } from '@/lib/x-api'
+// import { XApiClient } from '@/lib/x-api'
+import { rapidApiTwitterClient } from '@/lib/rapidapi-twitter'
 
-// Create xApiClient instance locally
-const xApiClient = new XApiClient({
-  apiKey: process.env.X_API_KEY!,
-  apiSecret: process.env.X_API_SECRET!,
-  bearerToken: process.env.X_BEARER_TOKEN!,
-  clientId: process.env.X_CLIENT_ID!,
-  clientSecret: process.env.X_CLIENT_SECRET!,
-})
+// Comment out X API client for now - using only RapidAPI
+// const xApiClient = new XApiClient({
+//   apiKey: process.env.X_API_KEY!,
+//   apiSecret: process.env.X_API_SECRET!,
+//   bearerToken: process.env.X_BEARER_TOKEN!,
+//   clientId: process.env.X_CLIENT_ID!,
+//   clientSecret: process.env.X_CLIENT_SECRET!,
+// })
 
 export async function POST(request: NextRequest) {
   try {
@@ -43,17 +44,10 @@ export async function POST(request: NextRequest) {
     }
 
     const usernames = targets.map(t => t.targetUsername)
-    console.log(`Fetching tweets for target users: ${usernames.join(', ')}`)
+    console.log(`🚀 RapidAPI: Fetching tweets for target users: ${usernames.join(', ')}`)
 
-    // Use X API with fallback scraping for all target users
-    const enableScraping = process.env.ENABLE_SCRAPING_FALLBACK === 'true'
-    console.log(`🔧 Scraping fallback ${enableScraping ? 'enabled' : 'disabled'}`)
-    
-    const results = await xApiClient.getTargetUsersTweets(usernames, {
-      maxTweetsPerUser: 10, // Get 10 most recent tweets per user
-      hours: 24, // Get tweets from last 24 hours
-      fallbackToScraping: enableScraping
-    })
+    // Use only RapidAPI for now (comment out other methods)
+    const results = await rapidApiTwitterClient.getMultipleUsersTweets(usernames, 10)
 
     let totalTweetsCreated = 0
     const targetResults = []
@@ -65,7 +59,8 @@ export async function POST(request: NextRequest) {
         targetResults.push({
           targetUsername: result.username,
           error: result.error,
-          newTweets: 0
+          newTweets: 0,
+          source: 'rapidapi'
         })
         continue
       }
@@ -129,7 +124,8 @@ export async function POST(request: NextRequest) {
         targetUsername: result.username,
         totalTweets: result.tweets.length,
         newTweets: newTweetsCount,
-        latestTweet: result.tweets[0]?.content?.substring(0, 100) + '...' || 'No tweets'
+        latestTweet: result.tweets[0]?.content?.substring(0, 100) + '...' || 'No tweets',
+        source: 'rapidapi' // Add source tracking
       })
     }
 

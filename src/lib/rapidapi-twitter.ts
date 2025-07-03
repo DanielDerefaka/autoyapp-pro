@@ -85,7 +85,7 @@ export class RapidApiTwitterClient {
     try {
       console.log(`🔍 RapidAPI: Getting user info for @${username}`)
       
-      const response = await this.makeRequest('/user-by-screen-name', {
+      const response = await this.makeRequest('/UserByScreenName', {
         username: username.replace('@', '')
       })
 
@@ -115,12 +115,33 @@ export class RapidApiTwitterClient {
     cursor?: string
   } = {}): Promise<{ tweets: any[], cursor?: string }> {
     try {
-      const { maxResults = 20 } = options
-      
       console.log(`🔍 RapidAPI: Getting tweets for @${username}`)
       
+      // First get the user info to get the user ID
+      const user = await this.getUserByScreenName(username)
+      if (!user) {
+        console.error(`❌ RapidAPI: User @${username} not found`)
+        return { tweets: [] }
+      }
+      
+      return this.getUserTweetsByUserId(user.id, username, options)
+    } catch (error) {
+      console.error(`❌ RapidAPI: Failed to get tweets for @${username}:`, error)
+      return { tweets: [] }
+    }
+  }
+
+  async getUserTweetsByUserId(userId: string, username: string, options: {
+    maxResults?: number
+    cursor?: string
+  } = {}): Promise<{ tweets: any[], cursor?: string }> {
+    try {
+      const { maxResults = 20 } = options
+      
+      console.log(`🔍 RapidAPI: Getting tweets for user ID ${userId} (@${username})`)
+      
       const params: Record<string, string> = {
-        username: username.replace('@', ''),
+        id: userId, // Use userId as required by API
         count: maxResults.toString()
       }
 
@@ -128,10 +149,53 @@ export class RapidApiTwitterClient {
         params.cursor = options.cursor
       }
 
-      const response = await this.makeRequest('/user-tweets', params)
+      const response = await this.makeRequest('/UserTweets', params)
+      
+      // Debug: Log the actual response structure - but limit it to avoid huge logs
+      console.log(`🔍 RapidAPI Response structure for ${username}:`, {
+        hasData: !!response?.data,
+        hasUser: !!response?.data?.user,
+        hasResult: !!response?.data?.user?.result,
+        hasTimeline: !!response?.data?.user?.result?.timeline_v2,
+        hasInstructions: !!response?.data?.user?.result?.timeline_v2?.timeline?.instructions,
+        responseType: typeof response,
+        topLevelKeys: response ? Object.keys(response) : 'no response'
+      })
 
+      // Try multiple possible response structures
+      let instructions = null
+      
+      // Structure 1: Standard timeline structure
       if (response?.data?.user?.result?.timeline_v2?.timeline?.instructions) {
-        const instructions = response.data.user.result.timeline_v2.timeline.instructions
+        instructions = response.data.user.result.timeline_v2.timeline.instructions
+        console.log(`📍 Using timeline_v2 structure for ${username}`)
+      }
+      // Structure 2: Direct timeline structure  
+      else if (response?.data?.user?.result?.timeline?.timeline?.instructions) {
+        instructions = response.data.user.result.timeline.timeline.instructions
+        console.log(`📍 Using timeline structure for ${username}`)
+      }
+      // Structure 3: Simple tweets array
+      else if (response?.data?.tweets && Array.isArray(response.data.tweets)) {
+        console.log(`📍 Using direct tweets array for ${username}`)
+        const tweets = response.data.tweets
+          .filter(tweet => tweet.text && !tweet.text.startsWith('RT @') && !tweet.text.startsWith('@'))
+          .slice(0, 10)
+          .map(tweet => ({
+            rest_id: tweet.id,
+            legacy: {
+              full_text: tweet.text,
+              created_at: tweet.created_at,
+              favorite_count: tweet.public_metrics?.like_count || 0,
+              retweet_count: tweet.public_metrics?.retweet_count || 0,
+              reply_count: tweet.public_metrics?.reply_count || 0
+            }
+          }))
+        console.log(`✅ RapidAPI: Found ${tweets.length} tweets via direct array for user ID ${userId} (@${username})`)
+        return { tweets, cursor: undefined }
+      }
+
+      if (instructions) {
         const tweets: any[] = []
         let nextCursor: string | undefined
 
@@ -169,13 +233,15 @@ export class RapidApiTwitterClient {
           }
         }
 
-        console.log(`✅ RapidAPI: Found ${tweets.length} tweets for @${username}`)
+        console.log(`✅ RapidAPI: Found ${tweets.length} tweets for user ID ${userId} (@${username})`)
         return { tweets, cursor: nextCursor }
       }
 
+      console.log(`⚠️ RapidAPI: No recognizable structure found for ${username}`)
+      console.log(`🔍 Full response:`, JSON.stringify(response, null, 2))
       return { tweets: [] }
     } catch (error) {
-      console.error(`❌ RapidAPI: Failed to get tweets for @${username}:`, error)
+      console.error(`❌ RapidAPI: Failed to get tweets for user ID ${userId} (@${username}):`, error)
       return { tweets: [] }
     }
   }
@@ -204,8 +270,8 @@ export class RapidApiTwitterClient {
           continue
         }
 
-        // Get user tweets
-        const tweetsResponse = await this.getUserTweets(cleanUsername, {
+        // Get user tweets using the user ID we already have
+        const tweetsResponse = await this.getUserTweetsByUserId(user.id, cleanUsername, {
           maxResults: maxTweetsPerUser
         })
 

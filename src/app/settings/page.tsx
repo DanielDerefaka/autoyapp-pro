@@ -7,6 +7,8 @@ import { useUser } from '@clerk/nextjs'
 import { NotificationPreferences } from '@/components/settings/notification-preferences'
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Bot, ArrowRight, Zap } from 'lucide-react'
+import Link from 'next/link'
 
 function SettingsContent() {
   const { user, isLoaded } = useUser()
@@ -156,6 +158,62 @@ function SettingsContent() {
                   Refresh Status
                 </Button>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-gray-100">
+          <CardHeader>
+            <CardTitle className="text-black flex items-center">
+              <Bot className="h-5 w-5 mr-2" />
+              AI Reply Styles
+            </CardTitle>
+            <CardDescription className="text-gray-500">
+              Customize how AI generates replies to match your voice and personality
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-black">Reply Personalization</p>
+                <p className="text-sm text-gray-500">
+                  Configure tone, personality, topics, and custom instructions for AI-generated replies
+                </p>
+              </div>
+              <Link href="/settings/reply-styles">
+                <Button variant="outline" className="border-gray-200 text-black hover:bg-gray-50">
+                  Configure Styles
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-gray-100">
+          <CardHeader>
+            <CardTitle className="text-black flex items-center">
+              <Zap className="h-5 w-5 mr-2" />
+              Autopilot Settings
+            </CardTitle>
+            <CardDescription className="text-gray-500">
+              Configure automatic AI-powered replies to target users
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-black">AI Autopilot</p>
+                <p className="text-sm text-gray-500">
+                  Automatically monitor target users and generate contextual replies with X ToS compliance
+                </p>
+              </div>
+              <Link href="/settings/autopilot">
+                <Button variant="outline" className="border-gray-200 text-black hover:bg-gray-50">
+                  Configure Autopilot
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+              </Link>
             </div>
           </CardContent>
         </Card>

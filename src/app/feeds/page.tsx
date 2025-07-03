@@ -94,7 +94,12 @@ export default function FeedsPage() {
       
       const data = await response.json()
       setGeneratedReply(data.reply)
-      toast.success('Reply generated successfully!')
+      
+      if (data.fallback) {
+        toast.success('Reply generated using template (AI unavailable)')
+      } else {
+        toast.success('AI-powered reply generated successfully!')
+      }
     } catch (error) {
       toast.error('Failed to generate reply')
       setGeneratedReply('')
