@@ -5,7 +5,7 @@
  * Run with: npx tsx src/scripts/test-autopilot.ts
  */
 
-const APP_URL = process.env.APP_URL || 'http://localhost:3002'
+const APP_URL = process.env.APP_URL || 'http://localhost:3000'
 const CRON_SECRET = process.env.CRON_SECRET || 'test-secret'
 
 async function testAutopilotEndpoint(endpoint: string, name: string) {

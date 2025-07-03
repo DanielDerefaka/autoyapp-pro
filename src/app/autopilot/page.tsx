@@ -58,50 +58,12 @@ export default function AutopilotPage() {
 
   const fetchAutopilotStatus = async () => {
     try {
-      // This would be a real API call to get autopilot status
-      // For now, using mock data
-      const mockStatus: AutopilotStatus = {
-        isEnabled: true,
-        isActive: true,
-        lastRun: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-        nextRun: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-        todayStats: {
-          repliesSent: 12,
-          maxReplies: 30,
-          targetsMonitored: 8,
-          tweetsProcessed: 45
-        },
-        recentActivity: [
-          {
-            id: '1',
-            action: 'Reply sent',
-            timestamp: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-            details: 'Replied to @johndoe tweet about AI trends',
-            status: 'success'
-          },
-          {
-            id: '2',
-            action: 'Tweet analyzed',
-            timestamp: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
-            details: 'Analyzed 3 new tweets from target users',
-            status: 'success'
-          },
-          {
-            id: '3',
-            action: 'Rate limit warning',
-            timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-            details: 'Approaching hourly rate limit (4/5 replies)',
-            status: 'warning'
-          }
-        ],
-        queueStats: {
-          pending: 3,
-          scheduled: 7,
-          failed: 1
-        }
+      const response = await fetch('/api/autopilot/status')
+      if (!response.ok) {
+        throw new Error('Failed to fetch autopilot status')
       }
-      
-      setStatus(mockStatus)
+      const data: AutopilotStatus = await response.json()
+      setStatus(data)
       setLoading(false)
     } catch (error) {
       console.error('Error fetching autopilot status:', error)
@@ -110,9 +72,27 @@ export default function AutopilotPage() {
   }
 
   const toggleAutopilot = async () => {
-    // This would toggle autopilot via API
-    if (status) {
+    if (!status) return
+    
+    try {
+      const response = await fetch('/api/autopilot/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          isEnabled: !status.isEnabled
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to toggle autopilot')
+      }
+      
+      // Update local state
       setStatus(prev => prev ? { ...prev, isEnabled: !prev.isEnabled } : null)
+    } catch (error) {
+      console.error('Error toggling autopilot:', error)
     }
   }
 

@@ -12,7 +12,9 @@ import {
   X,
   Zap,
   MessageSquare,
-  Bot
+  Bot,
+  PenTool,
+  Calendar
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -20,6 +22,8 @@ import { cn } from '@/lib/utils'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
+  { name: 'Compose', href: '/compose', icon: PenTool },
+  { name: 'Calendar', href: '/calendar', icon: Calendar },
   { name: 'Feeds', href: '/feeds', icon: MessageSquare },
   { name: 'Autopilot', href: '/autopilot', icon: Bot },
   { name: 'Target Users', href: '/target-users', icon: Users },

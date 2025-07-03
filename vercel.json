@@ -6,5 +6,11 @@
   },
   "env": {
     "NODE_ENV": "production"
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/process-scheduled-tweets",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }

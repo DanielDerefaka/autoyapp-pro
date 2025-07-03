@@ -152,16 +152,25 @@ export class XApiClient {
       }
     }
 
-    const response = await this.makeRequest(
-      '/tweets',
-      {
-        method: 'POST',
-        body: JSON.stringify(body),
-      },
-      options.accessToken
-    )
+    // Use OAuth 2.0 User Context for posting tweets
+    const url = `${this.baseUrl}/tweets`
     
-    return response
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${options.accessToken}` // User access token
+      },
+      body: JSON.stringify(body)
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      console.error('X API Error Response:', error)
+      throw new Error(`X API error: ${response.status} - ${error}`)
+    }
+
+    return response.json()
   }
 
   async deleteTweet(
@@ -351,8 +360,7 @@ export class XApiClient {
     return results
   }
 
-  // OAuth 2.0 methods (temporarily disabled for build fix)
-  /*
+  // OAuth 2.0 methods
   generateOAuthUrl(redirectUri: string, state: string) {
     const codeVerifier = crypto.randomBytes(32).toString('base64url')
     const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url')
@@ -426,7 +434,6 @@ export class XApiClient {
 
     return response.json()
   }
-  */
 }
 
 export const xApiClient = new XApiClient({
