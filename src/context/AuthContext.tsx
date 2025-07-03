@@ -1,6 +1,6 @@
 "use client";
 import { onSignUpUser } from "@/actions/auth";
-import { SignUpSchema } from "@/app/auth/sign-up/schema";
+import { SignUpSchema } from "@/app/(auth)/sign-up/schema";
 import { useSignIn, useSignUp } from "@clerk/nextjs";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
@@ -146,7 +146,11 @@ export const useAuthSignUp = () => {
   });
 
   // Generate email verification code
-  const onGenerateCode = async (email: string, password: string, userData: any) => {
+  const onGenerateCode = async (
+    email: string,
+    password: string,
+    userData: any
+  ) => {
     if (!isLoaded) {
       showToast("error", "Authentication service not loaded");
       return;
