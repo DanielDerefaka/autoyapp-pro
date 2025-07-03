@@ -2,11 +2,12 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { EngagementChart } from '@/components/analytics/engagement-chart'
 import { PerformanceChart } from '@/components/analytics/performance-chart'
 import { ActivityHeatmap } from '@/components/analytics/activity-heatmap'
 import { useEngagementMetrics, useTargetAnalytics, usePerformanceMetrics } from '@/hooks/use-analytics'
-import { TrendingUp, TrendingDown, Activity, Target, DollarSign, Users, MessageSquare, Heart, Repeat2, ThumbsUp } from 'lucide-react'
+import { TrendingUp, TrendingDown, Activity, Target, DollarSign, Users, MessageSquare, Heart, Repeat2, ThumbsUp, BarChart3, Download, Filter } from 'lucide-react'
 
 export default function AnalyticsPage() {
   const { data: metrics, isLoading } = useEngagementMetrics()
@@ -52,11 +53,30 @@ export default function AnalyticsPage() {
   ]
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-1">
-        <p className="text-gray-500 text-sm">
-          {metrics ? `${totalReplies} replies sent • ${totalTargets} targets monitored • ${(avgResponseTime / 1000).toFixed(1)}s avg response time` : 'Loading analytics...'}
-        </p>
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold text-foreground flex items-center">
+            <div className="p-2 bg-gradient-to-br from-chart-1/20 to-chart-3/20 rounded-xl mr-3">
+              <BarChart3 className="h-8 w-8 text-chart-1" />
+            </div>
+            Analytics
+          </h1>
+          <p className="text-muted-foreground text-sm">
+            {metrics ? `${totalReplies} replies sent • ${totalTargets} targets monitored • ${(avgResponseTime / 1000).toFixed(1)}s avg response time` : 'Loading analytics...'}
+          </p>
+        </div>
+        <div className="flex space-x-3">
+          <Button variant="outline" className="gap-2">
+            <Filter className="h-4 w-4" />
+            Filter
+          </Button>
+          <Button className="gap-2 shadow-lg">
+            <Download className="h-4 w-4" />
+            Export
+          </Button>
+        </div>
       </div>
 
       {/* Key Metrics */}
@@ -64,26 +84,32 @@ export default function AnalyticsPage() {
         {statCards.map((stat) => {
           const Icon = stat.icon
           return (
-            <Card key={stat.title} className="border-gray-100">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">{stat.title}</CardTitle>
-                <Icon className="h-4 w-4 text-gray-400" />
+            <Card key={stat.title} className="border-border bg-card/50 backdrop-blur-sm hover:bg-card/80 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">{stat.title}</CardTitle>
+                <div className="p-2 bg-chart-1/10 rounded-lg">
+                  <Icon className="h-4 w-4 text-chart-1" />
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-black">{stat.value}</div>
-                <p className="text-xs text-gray-500 flex items-center gap-1">
+                <div className="text-3xl font-bold text-foreground">{stat.value}</div>
+                <div className="flex items-center space-x-2 mt-2">
                   {stat.change !== 'N/A' && (
                     <>
                       {stat.trend === 'up' ? (
-                        <TrendingUp className="h-3 w-3 text-green-500" />
+                        <TrendingUp className="h-3 w-3 text-emerald-500" />
                       ) : (
-                        <TrendingDown className="h-3 w-3 text-red-500" />
+                        <TrendingDown className="h-3 w-3 text-destructive" />
                       )}
-                      {stat.change} from last month
+                      <p className="text-xs text-muted-foreground">
+                        {stat.change} from last month
+                      </p>
                     </>
                   )}
-                  {stat.change === 'N/A' && 'No data yet'}
-                </p>
+                  {stat.change === 'N/A' && (
+                    <p className="text-xs text-muted-foreground">No data yet</p>
+                  )}
+                </div>
               </CardContent>
             </Card>
           )

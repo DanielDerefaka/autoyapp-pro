@@ -150,29 +150,31 @@ export default function AutopilotPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold text-black flex items-center">
-            <Bot className="h-7 w-7 mr-2" />
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold text-foreground flex items-center">
+            <div className="p-2 bg-gradient-to-br from-chart-5/20 to-primary/20 rounded-xl mr-3">
+              <Bot className="h-8 w-8 text-primary" />
+            </div>
             Autopilot Dashboard
           </h1>
-          <p className="text-gray-500">
+          <p className="text-muted-foreground">
             Monitor your AI-powered engagement automation
           </p>
         </div>
         <div className="flex space-x-3">
           <Link href="/settings/autopilot">
-            <Button variant="outline" className="border-gray-200 text-black hover:bg-gray-50">
-              <Settings className="h-4 w-4 mr-2" />
+            <Button variant="outline" className="gap-2">
+              <Settings className="h-4 w-4" />
               Settings
             </Button>
           </Link>
           <Button 
             onClick={toggleAutopilot}
             className={status.isEnabled 
-              ? "bg-red-600 text-white hover:bg-red-700" 
-              : "bg-green-600 text-white hover:bg-green-700"
+              ? "bg-destructive hover:bg-destructive/90 shadow-lg" 
+              : "bg-emerald-600 hover:bg-emerald-700 shadow-lg"
             }
           >
             {status.isEnabled ? (
@@ -191,9 +193,15 @@ export default function AutopilotPage() {
       </div>
 
       {/* Status Alert */}
-      <Alert className={status.isEnabled ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}>
-        <Activity className={`h-4 w-4 ${status.isEnabled ? "text-green-600" : "text-red-600"}`} />
-        <AlertDescription className={status.isEnabled ? "text-green-800" : "text-red-800"}>
+      <Alert className={status.isEnabled 
+        ? "border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-800" 
+        : "border-destructive/20 bg-destructive/5"
+      }>
+        <Activity className={`h-4 w-4 ${status.isEnabled ? "text-emerald-600" : "text-destructive"}`} />
+        <AlertDescription className={status.isEnabled 
+          ? "text-emerald-800 dark:text-emerald-300" 
+          : "text-destructive"
+        }>
           {status.isEnabled 
             ? `🤖 Autopilot is ACTIVE - Last run: ${status.lastRun ? formatRelativeTime(status.lastRun) : 'Never'} | Next run: ${status.nextRun ? formatNextRun(status.nextRun) : 'Soon'}`
             : "⏸️ Autopilot is PAUSED - No automatic replies will be sent"
@@ -203,10 +211,12 @@ export default function AutopilotPage() {
 
       <div className="grid gap-6">
         {/* Today's Stats */}
-        <Card className="border-gray-100">
+        <Card className="border-border bg-card glass">
           <CardHeader>
-            <CardTitle className="text-black flex items-center">
-              <TrendingUp className="h-5 w-5 mr-2" />
+            <CardTitle className="text-foreground flex items-center">
+              <div className="p-2 bg-chart-1/10 rounded-lg mr-3">
+                <TrendingUp className="h-5 w-5 text-chart-1" />
+              </div>
               Today's Performance
             </CardTitle>
             <CardDescription>
@@ -214,36 +224,36 @@ export default function AutopilotPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-4 gap-6">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-black">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="text-center p-4 rounded-xl bg-chart-1/5">
+                <div className="text-3xl font-bold text-foreground">
                   {status.todayStats.repliesSent}
-                  <span className="text-sm text-gray-500">/{status.todayStats.maxReplies}</span>
+                  <span className="text-sm text-muted-foreground">/{status.todayStats.maxReplies}</span>
                 </div>
-                <p className="text-sm text-gray-500">Replies Sent</p>
-                <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                <p className="text-sm text-muted-foreground mt-1">Replies Sent</p>
+                <div className="w-full bg-muted rounded-full h-2 mt-3">
                   <div 
-                    className="bg-blue-600 h-2 rounded-full" 
+                    className="bg-chart-1 h-2 rounded-full transition-all duration-500" 
                     style={{ width: `${(status.todayStats.repliesSent / status.todayStats.maxReplies) * 100}%` }}
                   ></div>
                 </div>
               </div>
 
-              <div className="text-center">
-                <div className="text-2xl font-bold text-black">{status.todayStats.targetsMonitored}</div>
-                <p className="text-sm text-gray-500">Targets Monitored</p>
+              <div className="text-center p-4 rounded-xl bg-chart-2/5">
+                <div className="text-3xl font-bold text-foreground">{status.todayStats.targetsMonitored}</div>
+                <p className="text-sm text-muted-foreground mt-1">Targets Monitored</p>
               </div>
 
-              <div className="text-center">
-                <div className="text-2xl font-bold text-black">{status.todayStats.tweetsProcessed}</div>
-                <p className="text-sm text-gray-500">Tweets Analyzed</p>
+              <div className="text-center p-4 rounded-xl bg-chart-3/5">
+                <div className="text-3xl font-bold text-foreground">{status.todayStats.tweetsProcessed}</div>
+                <p className="text-sm text-muted-foreground mt-1">Tweets Analyzed</p>
               </div>
 
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">
+              <div className="text-center p-4 rounded-xl bg-emerald-500/5">
+                <div className="text-3xl font-bold text-emerald-600">
                   {Math.round((status.todayStats.repliesSent / status.todayStats.tweetsProcessed) * 100) || 0}%
                 </div>
-                <p className="text-sm text-gray-500">Reply Rate</p>
+                <p className="text-sm text-muted-foreground mt-1">Reply Rate</p>
               </div>
             </div>
           </CardContent>

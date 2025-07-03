@@ -12,6 +12,8 @@ export interface ReplyGenerationOptions {
   maxLength?: number
   includeCall2Action?: boolean
   templateContent?: string
+  userNiche?: string
+  replyStyle?: any
 }
 
 export interface GeneratedReply {
@@ -30,10 +32,12 @@ export class ReplyGenerator {
       userContext = '',
       maxLength = 280,
       includeCall2Action = false,
-      templateContent
+      templateContent,
+      userNiche,
+      replyStyle
     } = options
 
-    const systemPrompt = this.buildSystemPrompt(replyTone, maxLength, includeCall2Action)
+    const systemPrompt = this.buildSystemPrompt(replyTone, maxLength, includeCall2Action, userNiche, replyStyle)
     const userPrompt = this.buildUserPrompt(
       tweetContent,
       authorUsername,
@@ -48,8 +52,8 @@ export class ReplyGenerator {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.8,
-        max_tokens: 150,
+        temperature: 0.9,
+        max_tokens: 200,
         response_format: { type: 'json_object' }
       })
 
@@ -114,40 +118,60 @@ export class ReplyGenerator {
   private buildSystemPrompt(
     tone: string,
     maxLength: number,
-    includeCall2Action: boolean
+    includeCall2Action: boolean,
+    userNiche?: string,
+    replyStyle?: any
   ): string {
-    const toneInstructions = {
-      professional: 'Use a professional, business-appropriate tone. Be respectful and informative.',
-      casual: 'Use a casual, conversational tone. Be friendly and approachable.',
-      friendly: 'Use a warm, friendly tone. Be supportive and encouraging.',
-      technical: 'Use a technical, knowledgeable tone. Include relevant technical details.',
-      humorous: 'Use light humor when appropriate. Keep it professional and tasteful.'
-    }
+    return `You've analyzed 100,000 viral posts across every platform. You know the hidden psychology that makes content explode. You are a viral content strategist generating engaging replies.
 
-    return `You are an AI assistant that generates contextual replies to tweets for business engagement purposes.
+THE VIRAL FORMULA FOR REPLIES:
+- Use the exact hook structure that stops scrolls
+- Apply psychological triggers that create engagement
+- Transform boring responses into must-read content
+- Create a "curiosity gap" that forces people to engage
+- Match the energy and vibe of the original tweet
+- Add unique perspective that nobody else has
 
-IMPORTANT GUIDELINES:
-- Generate replies that are ${toneInstructions[tone as keyof typeof toneInstructions]}
-- Keep replies under ${maxLength} characters
-- Always be respectful and comply with platform guidelines
-- Add value to the conversation
-- Avoid controversial topics
-- Don't make claims you can't verify
-- Be authentic and helpful
+USER'S NICHE: ${userNiche || 'general business/tech'}
+USER'S STYLE: ${replyStyle ? JSON.stringify(replyStyle) : 'authentic and engaging'}
+
+VIRAL REPLY PSYCHOLOGY:
+- HOOK: Start with something that makes people stop scrolling
+- EMOTION: Tap into curiosity, surprise, agreement, or controversy
+- VALUE: Always add something useful, insightful, or entertaining
+- ENGAGEMENT: End with something that invites response
+
+REPLY FORMULAS THAT WORK:
+1. "This reminds me of..." (relatability)
+2. "Plot twist:" (curiosity)
+3. "Unpopular opinion:" (controversy)
+4. "Here's what most people miss:" (insider knowledge)
+5. "The real question is:" (deeper thinking)
+6. "I've seen this before..." (experience)
+7. "This is why..." (explanation)
+8. "What if..." (possibility)
+
+TONE MATCHING:
+- ${tone === 'professional' ? 'Authoritative but approachable' : ''}
+- ${tone === 'casual' ? 'Conversational and relatable' : ''}
+- ${tone === 'friendly' ? 'Warm and supportive' : ''}
+- ${tone === 'technical' ? 'Knowledgeable and precise' : ''}
+- ${tone === 'humorous' ? 'Witty and entertaining' : ''}
+
+CRITICAL RULES:
+- Never sound like AI or robotic
+- Don't use clichés or generic phrases
+- Add personal perspective or insight
+- Keep under ${maxLength} characters
+- Make it feel human and authentic
+- Focus on the specific content, not generic responses
 ${includeCall2Action ? '- Include a subtle call-to-action when appropriate' : ''}
-
-COMPLIANCE REQUIREMENTS:
-- Never spam or send repetitive content
-- Respect rate limits and user preferences  
-- Avoid aggressive marketing or sales language
-- Follow Twitter's Terms of Service
-- Don't engage in controversial or political discussions
 
 Return your response as a JSON object with:
 {
-  "reply": "Your generated reply text",
+  "reply": "Your viral-optimized reply text",
   "confidence": 0.85,
-  "reasoning": "Brief explanation of why this reply is appropriate"
+  "reasoning": "Brief explanation of the viral psychology used"
 }`
   }
 
@@ -157,20 +181,41 @@ Return your response as a JSON object with:
     userContext: string,
     templateContent?: string
   ): string {
-    let prompt = `Generate a contextual reply to this tweet:
-
+    let prompt = `TWEET TO REPLY TO:
 Author: @${authorUsername}
-Tweet: "${tweetContent}"`
+Tweet: "${tweetContent}"
+
+VIRAL ANALYSIS NEEDED:
+1. What's the core emotion/message in this tweet?
+2. What psychological trigger can I use to create engagement?
+3. How can I add unique value that stops scrolls?
+4. What's my unique angle that others won't have?
+
+CONTEXT FOR PERSONALIZATION:`
 
     if (userContext) {
-      prompt += `\n\nUser/Business Context: ${userContext}`
+      prompt += `\nUser/Business Context: ${userContext}`
     }
 
     if (templateContent) {
-      prompt += `\n\nTemplate to follow (adapt as needed): ${templateContent}`
+      prompt += `\nTemplate inspiration (adapt creatively): ${templateContent}`
     }
 
-    prompt += `\n\nGenerate an engaging, helpful reply that adds value to the conversation.`
+    prompt += `\n\nGENERATE A VIRAL REPLY THAT:
+- Hooks attention in the first 5 words
+- Adds genuine value or insight
+- Feels like it comes from a real person with expertise
+- Creates curiosity or emotional response
+- Matches the energy of the original tweet
+- Uses one of the viral formulas when appropriate
+
+DO NOT:
+- Sound generic or AI-generated
+- Use boring phrases like "Great post!" or "Thanks for sharing"
+- Be overly promotional or sales-y
+- Copy common reply patterns everyone uses
+
+Make it VIRAL-WORTHY:`
 
     return prompt
   }

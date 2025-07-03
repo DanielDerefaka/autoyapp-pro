@@ -13,7 +13,7 @@
     "db:studio": "npx prisma studio",
     "postinstall": "npx prisma generate",
     "cron": "node scripts/cron-runner.js",
-    "cron:test": "curl -X POST http://localhost:3000/api/cron/process-scheduled-tweets -H \"Authorization: Bearer $CRON_SECRET\""
+    "cron:test": "curl -X POST http://localhost:3000/api/cron/process-scheduled-tweets -H \"Authorization: Bearer dev_cron_secret_12345\" -H \"Content-Type: application/json\""
   },
   "dependencies": {
     "@clerk/nextjs": "^5.3.2",

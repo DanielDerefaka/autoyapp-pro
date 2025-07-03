@@ -14,7 +14,8 @@ import {
   MessageSquare,
   Bot,
   PenTool,
-  Calendar
+  Calendar,
+  Sparkles
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -72,39 +73,41 @@ export function Sidebar({ open, setOpen }: SidebarProps) {
                 <div className="absolute left-full top-0 flex w-16 justify-center pt-5">
                   <button
                     type="button"
-                    className="-m-2.5 p-2.5"
+                    className="-m-2.5 p-2.5 rounded-full bg-white/10 backdrop-blur-sm hover:bg-white/20 transition-colors"
                     onClick={() => setOpen(false)}
                   >
                     <span className="sr-only">Close sidebar</span>
-                    <X className="h-6 w-6 text-white" />
+                    <X className="h-5 w-5 text-white" />
                   </button>
                 </div>
 
-                <div className="flex grow flex-col gap-y-5 overflow-y-auto bg-white border-r border-gray-100 px-6 pb-4">
-                  <div className="flex h-16 shrink-0 items-center">
-                    <div className="flex items-center space-x-2">
-                      <Zap className="h-7 w-7 text-black" />
-                      <span className="text-lg font-semibold text-black">AutoYapp Pro</span>
+                <div className="flex grow flex-col gap-y-6 overflow-y-auto bg-sidebar border-r border-sidebar-border px-6 pb-6 glass">
+                  <div className="flex h-20 shrink-0 items-center">
+                    <div className="flex items-center space-x-3">
+                      <div className="p-2 bg-primary rounded-xl">
+                        <Sparkles className="h-6 w-6 text-primary-foreground" />
+                      </div>
+                      <span className="text-xl font-semibold text-sidebar-foreground">AutoYapp Pro</span>
                     </div>
                   </div>
                   <nav className="flex flex-1 flex-col">
-                    <ul role="list" className="flex flex-1 flex-col gap-y-7">
+                    <ul role="list" className="flex flex-1 flex-col gap-y-2">
                       <li>
-                        <ul role="list" className="-mx-2 space-y-1">
+                        <ul role="list" className="space-y-1">
                           {navigation.map((item) => (
                             <li key={item.name}>
                               <Link
                                 href={item.href}
                                 className={cn(
                                   pathname === item.href
-                                    ? 'bg-black text-white'
-                                    : 'text-gray-700 hover:text-black hover:bg-gray-50',
-                                  'group flex gap-x-3 rounded-lg p-3 text-sm font-medium transition-colors'
+                                    ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
+                                    : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                                  'group flex gap-x-3 rounded-xl p-3 text-sm font-medium transition-all duration-200 hover:scale-[1.02]'
                                 )}
                               >
                                 <item.icon
                                   className={cn(
-                                    pathname === item.href ? 'text-white' : 'text-gray-400 group-hover:text-black',
+                                    pathname === item.href ? 'text-primary-foreground' : 'text-muted-foreground group-hover:text-sidebar-accent-foreground',
                                     'h-5 w-5 shrink-0'
                                   )}
                                 />
@@ -124,32 +127,34 @@ export function Sidebar({ open, setOpen }: SidebarProps) {
       </Transition.Root>
 
       {/* Desktop sidebar */}
-      <div className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-72 lg:flex-col">
-        <div className="flex grow flex-col gap-y-5 overflow-y-auto border-r border-gray-100 bg-white px-6 pb-4">
-          <div className="flex h-16 shrink-0 items-center">
-            <div className="flex items-center space-x-2">
-              <Zap className="h-7 w-7 text-black" />
-              <span className="text-lg font-semibold text-black">AutoYapp Pro</span>
+      <div className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-80 lg:flex-col">
+        <div className="flex grow flex-col gap-y-6 overflow-y-auto border-r border-sidebar-border bg-sidebar px-6 pb-6 glass">
+          <div className="flex h-20 shrink-0 items-center">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-primary rounded-xl shadow-lg shadow-primary/25">
+                <Sparkles className="h-6 w-6 text-primary-foreground" />
+              </div>
+              <span className="text-xl font-semibold text-sidebar-foreground">AutoYapp Pro</span>
             </div>
           </div>
           <nav className="flex flex-1 flex-col">
-            <ul role="list" className="flex flex-1 flex-col gap-y-7">
+            <ul role="list" className="flex flex-1 flex-col gap-y-2">
               <li>
-                <ul role="list" className="-mx-2 space-y-1">
+                <ul role="list" className="space-y-1">
                   {navigation.map((item) => (
                     <li key={item.name}>
                       <Link
                         href={item.href}
                         className={cn(
                           pathname === item.href
-                            ? 'bg-black text-white'
-                            : 'text-gray-700 hover:text-black hover:bg-gray-50',
-                          'group flex gap-x-3 rounded-lg p-3 text-sm font-medium transition-colors'
+                            ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
+                            : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                          'group flex gap-x-3 rounded-xl p-3 text-sm font-medium transition-all duration-200 hover:scale-[1.02] focus-ring'
                         )}
                       >
                         <item.icon
                           className={cn(
-                            pathname === item.href ? 'text-white' : 'text-gray-400 group-hover:text-black',
+                            pathname === item.href ? 'text-primary-foreground' : 'text-muted-foreground group-hover:text-sidebar-accent-foreground',
                             'h-5 w-5 shrink-0'
                           )}
                         />

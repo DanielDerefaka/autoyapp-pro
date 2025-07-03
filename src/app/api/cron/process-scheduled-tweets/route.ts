@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
       // Manual cron authentication
       if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
         console.log('❌ Cron authentication failed')
+        console.log('💡 For local testing, use: curl -X POST http://localhost:3000/api/cron/process-scheduled-tweets -H "Authorization: Bearer dev_cron_secret_12345"')
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
     }

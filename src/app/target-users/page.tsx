@@ -128,68 +128,69 @@ export default function TargetUsersPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <p className="text-gray-500 text-sm">
+        <div className="space-y-2">
+          <h2 className="text-3xl font-bold text-foreground">Target Users</h2>
+          <p className="text-muted-foreground text-sm">
             {targets.length} target user{targets.length !== 1 ? 's' : ''} • {targets.filter(t => t.isActive).length} active
           </p>
         </div>
         
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-black text-white hover:bg-gray-800">
-              <Plus className="h-4 w-4 mr-2" />
+            <Button className="gap-2 shadow-lg hover:scale-105 transition-all duration-200">
+              <Plus className="h-4 w-4" />
               Add Target User
             </Button>
           </DialogTrigger>
-          <DialogContent className="border-gray-100">
+          <DialogContent className="border-border glass">
             <DialogHeader>
-              <DialogTitle className="text-black">
+              <DialogTitle className="text-foreground">
                 {editingTarget ? 'Edit Target User' : 'Add Target User'}
               </DialogTitle>
-              <DialogDescription className="text-gray-500">
+              <DialogDescription className="text-muted-foreground">
                 {editingTarget 
                   ? 'Update the target user details below.'
                   : 'Add a new X user to monitor for engagement opportunities.'
                 }
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div>
-                <Label htmlFor="targetUsername" className="text-black">X Username</Label>
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="targetUsername" className="text-foreground font-medium">X Username</Label>
                 <Input
                   id="targetUsername"
                   placeholder="e.g. elonmusk"
-                  className="border-gray-200 focus:border-black"
+                  className="focus-ring"
                   {...register('targetUsername')}
                 />
                 {errors.targetUsername && (
-                  <p className="text-red-500 text-sm mt-1">{errors.targetUsername.message}</p>
+                  <p className="text-destructive text-sm">{errors.targetUsername.message}</p>
                 )}
               </div>
               
-              <div>
-                <Label htmlFor="notes" className="text-black">Notes (Optional)</Label>
+              <div className="space-y-2">
+                <Label htmlFor="notes" className="text-foreground font-medium">Notes (Optional)</Label>
                 <Textarea
                   id="notes"
                   placeholder="Why are you targeting this user? What type of content do they post?"
-                  className="border-gray-200 focus:border-black"
+                  className="focus-ring min-h-[100px]"
                   {...register('notes')}
                 />
                 {errors.notes && (
-                  <p className="text-red-500 text-sm mt-1">{errors.notes.message}</p>
+                  <p className="text-destructive text-sm">{errors.notes.message}</p>
                 )}
               </div>
               
-              <div className="flex justify-end space-x-2">
-                <Button type="button" variant="outline" onClick={closeDialog} className="border-gray-200 text-black hover:bg-gray-50">
+              <div className="flex justify-end space-x-3 pt-4">
+                <Button type="button" variant="outline" onClick={closeDialog}>
                   Cancel
                 </Button>
                 <Button 
                   type="submit" 
                   disabled={addTargetMutation.isPending || updateTargetMutation.isPending}
-                  className="bg-black text-white hover:bg-gray-800"
+                  className="shadow-lg"
                 >
                   {editingTarget ? 'Update' : 'Add'} Target
                 </Button>
@@ -200,39 +201,40 @@ export default function TargetUsersPage() {
       </div>
 
       {targets.length === 0 ? (
-        <Card className="border-gray-100">
-          <CardContent className="text-center py-12">
-            <User className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-black mb-2">No target users yet</h3>
-            <p className="text-gray-500 mb-6">
+        <Card className="border-border bg-card glass">
+          <CardContent className="text-center py-16">
+            <div className="p-4 bg-muted/20 rounded-full w-20 h-20 mx-auto mb-6 flex items-center justify-center">
+              <User className="h-10 w-10 text-muted-foreground" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground mb-3">No target users yet</h3>
+            <p className="text-muted-foreground mb-8 max-w-md mx-auto">
               Add your first target user to start monitoring their posts for engagement opportunities.
             </p>
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
-                <Button className="bg-black text-white hover:bg-gray-800">
+                <Button className="shadow-lg hover:scale-105 transition-all duration-200">
                   <Plus className="h-4 w-4 mr-2" />
                   Add Target User
                 </Button>
               </DialogTrigger>
-              {/* Dialog content is the same as above */}
             </Dialog>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {targets.map((target) => (
-            <Card key={target.id} className="border-gray-100 hover:shadow-md transition-shadow">
-              <CardHeader className="pb-3">
+            <Card key={target.id} className="border-border bg-card/50 backdrop-blur-sm hover:bg-card/80 hover:scale-[1.02] hover:shadow-xl transition-all duration-300 group">
+              <CardHeader className="pb-4">
                 <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-                      <User className="h-5 w-5 text-gray-600" />
+                  <div className="flex items-center space-x-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-primary/20 to-chart-2/20 rounded-xl flex items-center justify-center ring-2 ring-border">
+                      <User className="h-6 w-6 text-primary" />
                     </div>
                     <div>
-                      <CardTitle className="text-black text-lg">@{target.targetUsername}</CardTitle>
+                      <CardTitle className="text-foreground text-lg">@{target.targetUsername}</CardTitle>
                       <div className="flex items-center space-x-2 mt-1">
-                        <div className={`w-2 h-2 rounded-full ${target.isActive ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                        <span className="text-xs text-gray-500">
+                        <div className={`w-2 h-2 rounded-full ${target.isActive ? 'bg-emerald-500 animate-pulse' : 'bg-muted'}`}></div>
+                        <span className="text-xs text-muted-foreground">
                           {target.isActive ? 'Active' : 'Inactive'}
                         </span>
                       </div>
@@ -241,18 +243,18 @@ export default function TargetUsersPage() {
                   
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="border-gray-100">
-                      <DropdownMenuItem onClick={() => handleEdit(target)} className="text-black hover:bg-gray-50">
+                    <DropdownMenuContent align="end" className="border-border glass">
+                      <DropdownMenuItem onClick={() => handleEdit(target)} className="focus-ring">
                         <Edit className="h-4 w-4 mr-2" />
                         Edit
                       </DropdownMenuItem>
                       <DropdownMenuItem 
                         onClick={() => handleDelete(target.id, target.targetUsername)}
-                        className="text-red-600 hover:bg-red-50"
+                        className="text-destructive focus:bg-destructive/10"
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
                         Remove
@@ -262,37 +264,37 @@ export default function TargetUsersPage() {
                 </div>
               </CardHeader>
               
-              <CardContent className="pt-0">
+              <CardContent className="pt-0 space-y-4">
                 {target.notes && (
-                  <p className="text-gray-500 text-sm mb-4 line-clamp-2">{target.notes}</p>
+                  <p className="text-muted-foreground text-sm line-clamp-2 bg-muted/30 p-3 rounded-lg">{target.notes}</p>
                 )}
                 
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <div className="flex items-center text-gray-500 mb-1">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-3 rounded-lg bg-chart-1/10">
+                    <div className="flex items-center text-muted-foreground mb-2">
                       <MessageSquare className="h-3 w-3 mr-1" />
-                      <span>Tweets</span>
+                      <span className="text-xs">Tweets</span>
                     </div>
-                    <p className="font-medium text-black">{target._count.tweets}</p>
+                    <p className="font-semibold text-foreground text-lg">{target._count?.tweets || 0}</p>
                   </div>
                   
-                  <div>
-                    <div className="flex items-center text-gray-500 mb-1">
+                  <div className="p-3 rounded-lg bg-chart-2/10">
+                    <div className="flex items-center text-muted-foreground mb-2">
                       <TrendingUp className="h-3 w-3 mr-1" />
-                      <span>Engagement</span>
+                      <span className="text-xs">Score</span>
                     </div>
-                    <p className="font-medium text-black">{target.engagementScore.toFixed(1)}</p>
+                    <p className="font-semibold text-foreground text-lg">{target.engagementScore?.toFixed(1) || '0.0'}</p>
                   </div>
                 </div>
                 
-                <div className="mt-4 pt-4 border-t border-gray-100">
-                  <div className="flex items-center justify-between text-xs text-gray-500">
+                <div className="pt-4 border-t border-border">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <div className="flex items-center">
                       <Calendar className="h-3 w-3 mr-1" />
                       <span>Added {new Date(target.createdAt).toLocaleDateString()}</span>
                     </div>
                     {target.lastScraped && (
-                      <span>Last check: {new Date(target.lastScraped).toLocaleDateString()}</span>
+                      <span>Checked {new Date(target.lastScraped).toLocaleDateString()}</span>
                     )}
                   </div>
                 </div>

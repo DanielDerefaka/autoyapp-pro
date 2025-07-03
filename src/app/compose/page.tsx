@@ -344,15 +344,17 @@ export default function ComposePage() {
   )
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold text-black flex items-center">
-            <PenTool className="h-7 w-7 mr-2" />
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold text-foreground flex items-center">
+            <div className="p-2 bg-gradient-to-br from-primary/20 to-chart-1/20 rounded-xl mr-3">
+              <PenTool className="h-8 w-8 text-primary" />
+            </div>
             Compose Tweet
           </h1>
-          <p className="text-gray-500">
+          <p className="text-muted-foreground">
             Create engaging tweets and threads with AI assistance
           </p>
         </div>
@@ -360,13 +362,13 @@ export default function ComposePage() {
           <Button
             variant="outline"
             onClick={() => setShowAiGenerator(!showAiGenerator)}
-            className="border-gray-200 text-black hover:bg-gray-50"
+            className="gap-2 hover:scale-105 transition-all duration-200"
           >
-            <Bot className="h-4 w-4 mr-2" />
+            <Bot className="h-4 w-4" />
             AI Assistant
           </Button>
           {threadDraft.tweets.length > 1 && (
-            <Badge variant="secondary" className="px-3 py-1">
+            <Badge className="px-3 py-2 bg-primary/10 text-primary border-primary/20">
               {threadDraft.tweets.length} Tweets
             </Badge>
           )}
@@ -375,13 +377,15 @@ export default function ComposePage() {
 
       {/* AI Generator */}
       {showAiGenerator && (
-        <Card className="border-blue-200 bg-blue-50">
+        <Card className="border-primary/20 bg-primary/5 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="text-blue-900 flex items-center">
-              <Sparkles className="h-5 w-5 mr-2" />
+            <CardTitle className="text-foreground flex items-center">
+              <div className="p-2 bg-primary/10 rounded-lg mr-3">
+                <Sparkles className="h-5 w-5 text-primary" />
+              </div>
               AI Content Generator
             </CardTitle>
-            <CardDescription className="text-blue-700">
+            <CardDescription className="text-muted-foreground">
               Describe what you want to tweet about and let AI create the content
             </CardDescription>
           </CardHeader>
@@ -390,13 +394,13 @@ export default function ComposePage() {
               placeholder="E.g., 'Write a thread about the future of AI in marketing, include statistics and actionable tips'"
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
-              className="min-h-[100px] border-blue-200 focus:border-blue-400"
+              className="min-h-[100px] focus-ring"
             />
             <div className="flex space-x-3">
               <Button
                 onClick={generateAIContent}
                 disabled={isGenerating || !aiPrompt.trim()}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="shadow-lg hover:scale-105 transition-all duration-200"
               >
                 {isGenerating ? 'Generating...' : 'Generate Tweet'}
               </Button>
@@ -404,7 +408,7 @@ export default function ComposePage() {
                 onClick={generateAIThread}
                 disabled={isGenerating || !aiPrompt.trim()}
                 variant="outline"
-                className="border-blue-200 text-blue-700 hover:bg-blue-100"
+                className="hover:scale-105 transition-all duration-200"
               >
                 {isGenerating ? 'Generating...' : 'Generate Thread'}
               </Button>
@@ -419,16 +423,19 @@ export default function ComposePage() {
       {/* Tweet Composer */}
       <div className="space-y-4">
         {threadDraft.tweets.map((tweet, index) => (
-          <Card key={tweet.id} className="border-gray-100">
+          <Card key={tweet.id} className="border-border bg-card glass">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg text-black">
+                <CardTitle className="text-lg text-foreground flex items-center">
+                  <div className="p-1 bg-chart-1/10 rounded-lg mr-2">
+                    <PenTool className="h-4 w-4 text-chart-1" />
+                  </div>
                   {threadDraft.tweets.length > 1 ? `Tweet ${index + 1}` : 'Tweet'}
                 </CardTitle>
                 <div className="flex items-center space-x-2">
                   <Badge 
                     variant={tweet.characterCount > TWEET_LIMIT ? "destructive" : "secondary"}
-                    className="px-2 py-1"
+                    className="px-3 py-1 font-mono"
                   >
                     {tweet.characterCount}/{TWEET_LIMIT}
                   </Badge>
@@ -437,7 +444,7 @@ export default function ComposePage() {
                       variant="ghost"
                       size="sm"
                       onClick={() => removeTweet(tweet.id)}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10 hover:scale-105 transition-all duration-200"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -450,7 +457,7 @@ export default function ComposePage() {
                 placeholder="What's happening?"
                 value={tweet.content}
                 onValueChange={(value) => updateTweetContent(tweet.id, value)}
-                className="min-h-[120px] resize-none border-gray-200 focus:border-blue-400"
+                className="min-h-[120px] resize-none focus-ring"
                 enableAutocomplete={true}
                 maxLength={TWEET_LIMIT}
               />
@@ -471,9 +478,9 @@ export default function ComposePage() {
                     size="sm"
                     onClick={() => fileInputRefs.current[tweet.id]?.click()}
                     disabled={tweet.images.length >= 4}
-                    className="border-gray-200 text-gray-700 hover:bg-gray-50"
+                    className="gap-2 hover:scale-105 transition-all duration-200"
                   >
-                    <Image className="h-4 w-4 mr-2" />
+                    <Image className="h-4 w-4" />
                     Add Image ({tweet.images.length}/4)
                   </Button>
                 </div>
@@ -486,13 +493,13 @@ export default function ComposePage() {
                         <img
                           src={url}
                           alt={`Preview ${imageIndex + 1}`}
-                          className="w-full h-32 object-cover rounded-lg border border-gray-200"
+                          className="w-full h-32 object-cover rounded-xl border border-border shadow-sm"
                         />
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => removeImage(tweet.id, imageIndex)}
-                          className="absolute top-1 right-1 bg-red-600 text-white hover:bg-red-700 h-6 w-6 p-0"
+                          className="absolute top-2 right-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 h-6 w-6 p-0 rounded-full shadow-sm hover:scale-110 transition-all duration-200"
                         >
                           <X className="h-3 w-3" />
                         </Button>
@@ -519,26 +526,28 @@ export default function ComposePage() {
         <Button
           variant="outline"
           onClick={addTweet}
-          className="border-gray-200 text-gray-700 hover:bg-gray-50"
+          className="gap-2 hover:scale-105 transition-all duration-200 shadow-sm"
         >
-          <Plus className="h-4 w-4 mr-2" />
+          <Plus className="h-4 w-4" />
           Add Tweet to Thread
         </Button>
       </div>
 
       {/* Scheduling Section */}
       {isScheduling && (
-        <Card className="border-gray-100">
+        <Card className="border-border bg-card glass">
           <CardHeader>
-            <CardTitle className="text-black flex items-center">
-              <Clock className="h-5 w-5 mr-2" />
+            <CardTitle className="text-foreground flex items-center">
+              <div className="p-2 bg-chart-3/10 rounded-lg mr-3">
+                <Clock className="h-5 w-5 text-chart-3" />
+              </div>
               Schedule Content
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Date
                 </label>
                 <Input
@@ -546,18 +555,18 @@ export default function ComposePage() {
                   value={scheduledDate}
                   onChange={(e) => setScheduledDate(e.target.value)}
                   min={new Date().toISOString().split('T')[0]}
-                  className="border-gray-200 focus:border-blue-400"
+                  className="focus-ring"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Time
                 </label>
                 <Input
                   type="time"
                   value={scheduledTime}
                   onChange={(e) => setScheduledTime(e.target.value)}
-                  className="border-gray-200 focus:border-blue-400"
+                  className="focus-ring"
                 />
               </div>
             </div>
@@ -570,9 +579,9 @@ export default function ComposePage() {
         <Button
           variant="outline"
           onClick={() => setIsScheduling(!isScheduling)}
-          className="border-gray-200 text-gray-700 hover:bg-gray-50"
+          className="gap-2 hover:scale-105 transition-all duration-200"
         >
-          <Calendar className="h-4 w-4 mr-2" />
+          <Calendar className="h-4 w-4" />
           {isScheduling ? 'Cancel Schedule' : 'Schedule Later'}
         </Button>
         
@@ -581,18 +590,18 @@ export default function ComposePage() {
             <Button
               onClick={scheduleContent}
               disabled={!isValidForPublishing || !scheduledDate || !scheduledTime}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              className="gap-2 shadow-lg hover:scale-105 transition-all duration-200"
             >
-              <Calendar className="h-4 w-4 mr-2" />
+              <Calendar className="h-4 w-4" />
               Schedule {threadDraft.tweets.length > 1 ? 'Thread' : 'Tweet'}
             </Button>
           ) : (
             <Button
               onClick={publishNow}
               disabled={!isValidForPublishing}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              className="gap-2 shadow-lg hover:scale-105 transition-all duration-200"
             >
-              <Send className="h-4 w-4 mr-2" />
+              <Send className="h-4 w-4" />
               Publish {threadDraft.tweets.length > 1 ? 'Thread' : 'Tweet'}
             </Button>
           )}
