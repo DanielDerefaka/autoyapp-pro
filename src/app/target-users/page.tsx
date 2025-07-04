@@ -33,7 +33,10 @@ export default function TargetUsersPage() {
 
   const { data: targets = [], isLoading: targetsLoading } = useTargets()
   const { data: xAccountsData, isLoading: xAccountsLoading } = useXAccounts()
-  const xAccounts = xAccountsData ? [xAccountsData] : [] // Convert single account to array format
+  const xAccounts = Array.isArray(xAccountsData) ? xAccountsData : (xAccountsData ? [xAccountsData] : [])
+  
+  console.log('X Accounts data:', xAccountsData)
+  console.log('X Accounts array:', xAccounts)
   const addTargetMutation = useAddTarget()
   const deleteTargetMutation = useDeleteTarget()
   const updateTargetMutation = useUpdateTarget()
@@ -54,6 +57,12 @@ export default function TargetUsersPage() {
       return
     }
 
+    if (!xAccounts[0]?.id) {
+      toast.error('Invalid X account data. Please reconnect your account.')
+      console.error('X account missing ID:', xAccounts[0])
+      return
+    }
+
     try {
       if (editingTarget) {
         await updateTargetMutation.mutateAsync({
@@ -65,9 +74,11 @@ export default function TargetUsersPage() {
         })
         setEditingTarget(null)
       } else {
+        console.log('Submitting with xAccountId:', xAccounts[0].id)
         await addTargetMutation.mutateAsync({
           targetUsername: data.targetUsername,
           notes: data.notes,
+          xAccountId: xAccounts[0].id,
         })
       }
       

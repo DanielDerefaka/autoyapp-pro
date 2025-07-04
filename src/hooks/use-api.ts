@@ -109,7 +109,7 @@ export const useAddTarget = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: (targetData: { targetUsername: string; notes?: string }) =>
+    mutationFn: (targetData: { targetUsername: string; notes?: string; xAccountId: string }) =>
       apiRequest('/api/targets', {
         method: 'POST',
         body: JSON.stringify(targetData),

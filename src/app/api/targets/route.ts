@@ -11,14 +11,15 @@ const createTargetSchema = z.object({
 
 export async function GET() {
   try {
-    const { userId: clerkId } = await auth()
+    const authResult = await auth()
+    const clerkId = authResult?.userId
 
     if (!clerkId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const user = await prisma.user.findUnique({
-      where: {id: clerkId },
+      where: { clerkId },
     })
 
     if (!user) {
@@ -55,7 +56,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId: clerkId } = await auth()
+    const authResult = await auth()
+    const clerkId = authResult?.userId
 
     if (!clerkId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -70,7 +72,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
+    console.log('Request body:', body)
+    console.log('User found:', user)
     const validatedData = createTargetSchema.parse(body)
+    console.log('Validated data:', validatedData)
 
     // Check if X account belongs to user
     const xAccount = await prisma.xAccount.findFirst({
@@ -104,6 +109,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    console.log('Creating target user:', validatedData)
     const target = await prisma.targetUser.create({
       data: {
         userId: user.id,
