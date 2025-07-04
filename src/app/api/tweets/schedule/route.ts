@@ -11,7 +11,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { tweets, scheduledFor } = await request.json()
+    const contentType = request.headers.get('content-type')
+    let tweets: any[]
+    let scheduledFor: string
+
+    if (contentType?.includes('multipart/form-data')) {
+      // Handle FormData with images
+      const formData = await request.formData()
+      const tweetsData = formData.get('tweets') as string
+      tweets = JSON.parse(tweetsData)
+      scheduledFor = formData.get('scheduledFor') as string
+      
+      // Process images for each tweet
+      for (let i = 0; i < tweets.length; i++) {
+        const tweetImages = []
+        let imageIndex = 0
+        
+        while (true) {
+          const imageFile = formData.get(`tweet_${i}_image_${imageIndex}`) as File
+          if (!imageFile) break
+          
+          tweetImages.push(imageFile)
+          imageIndex++
+        }
+        
+        tweets[i].images = tweetImages
+      }
+    } else {
+      // Handle regular JSON (backward compatibility)
+      const body = await request.json()
+      tweets = body.tweets
+      scheduledFor = body.scheduledFor
+    }
 
     if (!tweets || !Array.isArray(tweets) || tweets.length === 0) {
       console.log('❌ Tweets array is required', tweets)
@@ -52,7 +83,10 @@ export async function POST(request: NextRequest) {
         userId: user.id,
         xAccountId: xAccount.id,
         type: tweets.length > 1 ? 'thread' : 'tweet',
-        content: JSON.stringify(tweets),
+        content: JSON.stringify(tweets.map((tweet, index) => ({
+          ...tweet,
+          scheduledFor: new Date(scheduledDate.getTime() + (index * 2 * 60 * 1000)).toISOString()
+        }))),
         previewText: tweets[0].content.substring(0, 100) + (tweets[0].content.length > 100 ? '...' : ''),
         scheduledFor: scheduledDate,
         status: 'scheduled',
@@ -61,27 +95,17 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Create individual reply queue entries for each tweet
-    const scheduledTweets = []
-    for (let i = 0; i < tweets.length; i++) {
-      const tweet = tweets[i]
-      const tweetScheduledTime = new Date(scheduledDate.getTime() + (i * 2 * 60 * 1000)) // 2 minutes apart
-      
-      const queueEntry = await prisma.replyQueue.create({
-        data: {
-          userId: user.id,
-          xAccountId: xAccount.id,
-          tweetId: `scheduled_${scheduledContent.id}_${i}`,
-          replyContent: tweet.content,
-          replyType: 'scheduled_tweet',
-          scheduledFor: tweetScheduledTime,
-          status: 'pending',
-          retryCount: 0
-        }
-      })
-      
-      scheduledTweets.push(queueEntry)
-    }
+    // For scheduled tweets, we don't create ReplyQueue entries since there are no actual tweets yet
+    // The scheduled content will be processed by a cron job that will publish the tweets
+    console.log(`✅ Scheduled content created with ID: ${scheduledContent.id}`)
+    
+    // Create a simple response with scheduling details
+    const scheduledTweets = tweets.map((tweet, index) => ({
+      id: `scheduled_${scheduledContent.id}_${index}`,
+      scheduledFor: new Date(scheduledDate.getTime() + (index * 2 * 60 * 1000)),
+      content: tweet.content,
+      order: index + 1
+    }))
 
     return NextResponse.json({ 
       success: true,

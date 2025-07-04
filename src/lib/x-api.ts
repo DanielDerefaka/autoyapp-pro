@@ -137,11 +137,53 @@ export class XApiClient {
     return response
   }
 
+  async uploadMedia(
+    imageBuffer: Buffer,
+    mimeType: string,
+    accessToken: string
+  ): Promise<{ media_id_string: string }> {
+    console.log(`🖼️ Starting media upload - Size: ${imageBuffer.length} bytes, Type: ${mimeType}`)
+    
+    try {
+      // Use proper form data for media upload
+      const formData = new URLSearchParams()
+      formData.append('media_data', imageBuffer.toString('base64'))
+      formData.append('media_category', 'tweet_image')
+
+      const response = await fetch('https://upload.twitter.com/1.1/media/upload.json', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: formData.toString()
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('❌ Media upload failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        })
+        throw new Error(`Media upload failed: ${response.status} - ${errorText}`)
+      }
+
+      const result = await response.json()
+      console.log(`✅ Media uploaded successfully: ${result.media_id_string}`)
+      return result
+    } catch (error) {
+      console.error('❌ Media upload error:', error)
+      throw error
+    }
+  }
+
   async postTweet(
     text: string,
     options: {
       replyToTweetId?: string
       accessToken: string
+      mediaIds?: string[]
     }
   ): Promise<{ data: { id: string; text: string } }> {
     const body: any = { text }
@@ -149,6 +191,12 @@ export class XApiClient {
     if (options.replyToTweetId) {
       body.reply = {
         in_reply_to_tweet_id: options.replyToTweetId
+      }
+    }
+
+    if (options.mediaIds && options.mediaIds.length > 0) {
+      body.media = {
+        media_ids: options.mediaIds
       }
     }
 

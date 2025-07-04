@@ -242,11 +242,41 @@ export default function ComposePage() {
 
   const publishNow = async () => {
     try {
-      const response = await fetch('/api/tweets/publish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tweets: threadDraft.tweets })
-      })
+      // Check if any tweets have images
+      const hasImages = threadDraft.tweets.some(tweet => tweet.images.length > 0)
+      
+      let response: Response
+      
+      if (hasImages) {
+        // Use FormData for tweets with images
+        const formData = new FormData()
+        
+        // Add tweets data (without File objects)
+        const tweetsForUpload = threadDraft.tweets.map(tweet => ({
+          content: tweet.content,
+          characterCount: tweet.characterCount
+        }))
+        formData.append('tweets', JSON.stringify(tweetsForUpload))
+        
+        // Add image files
+        threadDraft.tweets.forEach((tweet, tweetIndex) => {
+          tweet.images.forEach((image, imageIndex) => {
+            formData.append(`tweet_${tweetIndex}_image_${imageIndex}`, image)
+          })
+        })
+        
+        response = await fetch('/api/tweets/publish', {
+          method: 'POST',
+          body: formData
+        })
+      } else {
+        // Use JSON for text-only tweets
+        response = await fetch('/api/tweets/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tweets: threadDraft.tweets })
+        })
+      }
 
       const data = await response.json()
 
@@ -300,14 +330,45 @@ export default function ComposePage() {
     try {
       const scheduledDateTime = new Date(`${scheduledDate}T${scheduledTime}`)
       
-      const response = await fetch('/api/tweets/schedule', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          tweets: threadDraft.tweets,
-          scheduledFor: scheduledDateTime.toISOString()
+      // Check if any tweets have images
+      const hasImages = threadDraft.tweets.some(tweet => tweet.images.length > 0)
+      
+      let response: Response
+      
+      if (hasImages) {
+        // Use FormData for tweets with images
+        const formData = new FormData()
+        
+        // Add tweets data (without File objects)
+        const tweetsForUpload = threadDraft.tweets.map(tweet => ({
+          content: tweet.content,
+          characterCount: tweet.characterCount
+        }))
+        formData.append('tweets', JSON.stringify(tweetsForUpload))
+        formData.append('scheduledFor', scheduledDateTime.toISOString())
+        
+        // Add image files
+        threadDraft.tweets.forEach((tweet, tweetIndex) => {
+          tweet.images.forEach((image, imageIndex) => {
+            formData.append(`tweet_${tweetIndex}_image_${imageIndex}`, image)
+          })
         })
-      })
+        
+        response = await fetch('/api/tweets/schedule', {
+          method: 'POST',
+          body: formData
+        })
+      } else {
+        // Use JSON for text-only tweets
+        response = await fetch('/api/tweets/schedule', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            tweets: threadDraft.tweets,
+            scheduledFor: scheduledDateTime.toISOString()
+          })
+        })
+      }
 
       if (!response.ok) throw new Error('Failed to schedule')
 
