@@ -25,7 +25,8 @@ const DEFAULT_AUTOPILOT_SETTINGS = {
 
 export async function GET(request: NextRequest) {
   try {
-    const { userId: clerkId } = await auth()
+    const authResult = await auth()
+    const clerkId = authResult?.userId
 
     if (!clerkId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -92,9 +93,15 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function PUT(request: NextRequest) {
+  // PUT and POST do the same thing - update/create settings
+  return POST(request)
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { userId: clerkId } = await auth()
+    const authResult = await auth()
+    const clerkId = authResult?.userId
 
     if (!clerkId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -109,11 +116,17 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { settings } = body
-
-    if (!settings) {
+    console.log('Autopilot settings request body:', body)
+    
+    // Handle both formats: { settings: {...} } and direct { isEnabled: true, ... }
+    const settings = body.settings || body
+    
+    if (!settings || typeof settings !== 'object') {
+      console.log('No valid settings found in request body')
       return NextResponse.json({ error: 'Settings configuration required' }, { status: 400 })
     }
+
+    console.log('Settings data:', settings)
 
     // Validate and sanitize settings with compliance checks
     const validatedSettings = {
@@ -176,7 +189,8 @@ export async function POST(request: NextRequest) {
 // Emergency pause endpoint
 export async function DELETE(request: NextRequest) {
   try {
-    const { userId: clerkId } = await auth()
+    const authResult = await auth()
+    const clerkId = authResult?.userId
 
     if (!clerkId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     console.log('Request body:', body)
-    console.log('User found:', user)
+    
     const validatedData = createTargetSchema.parse(body)
     console.log('Validated data:', validatedData)
 
