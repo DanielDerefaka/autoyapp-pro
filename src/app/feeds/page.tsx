@@ -8,8 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { MessageSquare, Heart, Repeat2, Share, Clock, User, Bot, Send, Filter, RefreshCw, Eye, Download, AlertCircle, MoreHorizontal, Bookmark, ExternalLink, Sparkles, TrendingUp, MessageCircle, Users, Settings, Search, Plus } from 'lucide-react'
-import { useTargets } from '@/hooks/use-targets'
-import { useTweets, useScrapeTweets } from '@/hooks/use-tweets'
+import { useTargets, useTweets, useFetchTweets, useGenerateReply, useQueueReply } from '@/hooks/use-api'
 import { toast } from 'sonner'
 
 export default function FeedsPage() {
@@ -34,7 +33,9 @@ export default function FeedsPage() {
   }
   
   const { data: tweetsData, isLoading: isTweetsLoading, refetch } = useTweets(tweetFilters)
-  const scrapeTweets = useScrapeTweets()
+  const fetchTweets = useFetchTweets()
+  const generateReply = useGenerateReply()
+  const queueReply = useQueueReply()
 
   const targets = targetsData || []
   const tweets = tweetsData?.tweets || []
@@ -76,23 +77,16 @@ export default function FeedsPage() {
     setIsReplyDialogOpen(true)
 
     try {
-      const response = await fetch('/api/replies/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tweetId: tweet.id,
-          tweetContent: tweet.content,
-          targetUsername: tweet.targetUser.targetUsername,
-          context: {
-            authorUsername: tweet.authorUsername,
-            sentiment: tweet.sentimentScore
-          }
-        }),
+      const data = await generateReply.mutateAsync({
+        tweetId: tweet.id,
+        tweetContent: tweet.content,
+        targetUsername: tweet.targetUser.targetUsername,
+        context: {
+          authorUsername: tweet.authorUsername,
+          sentiment: tweet.sentimentScore
+        }
       })
-
-      if (!response.ok) throw new Error('Failed to generate reply')
       
-      const data = await response.json()
       setGeneratedReply(data.reply)
       
       if (data.fallback) {
@@ -101,7 +95,7 @@ export default function FeedsPage() {
         toast.success('AI-powered reply generated successfully!')
       }
     } catch (error) {
-      toast.error('Failed to generate reply')
+      // Error handling is done by the hook
       setGeneratedReply('')
     } finally {
       setIsGeneratingReply(false)
@@ -112,24 +106,17 @@ export default function FeedsPage() {
     if (!selectedTweet || !generatedReply.trim()) return
 
     try {
-      const response = await fetch('/api/replies/queue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tweetId: selectedTweet.id,
-          replyContent: generatedReply,
-          scheduledFor: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-        }),
+      await queueReply.mutateAsync({
+        tweetId: selectedTweet.id,
+        replyContent: generatedReply,
+        scheduledFor: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
       })
-
-      if (!response.ok) throw new Error('Failed to schedule reply')
       
-      toast.success('Reply scheduled successfully!')
       setIsReplyDialogOpen(false)
       setSelectedTweet(null)
       setGeneratedReply('')
     } catch (error) {
-      toast.error('Failed to schedule reply')
+      // Error handling is done by the hook
     }
   }
 
@@ -141,32 +128,12 @@ export default function FeedsPage() {
 
     try {
       toast.info(`Fetching latest tweets from ${targets.length} target users...`)
-      
-      const response = await fetch('/api/tweets/fetch-real', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        cache: 'no-cache'
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        if (data.error && data.error.includes('Bearer Token')) {
-          toast.error('X API credentials needed. See setup instructions below.')
-          return
-        }
-        throw new Error(data.error || 'Failed to fetch tweets')
-      }
-
-      if (data.totalNewTweets > 0) {
-        toast.success(`Found ${data.totalNewTweets} new tweets!`)
-      } else {
-        toast.info('No new tweets found.')
-      }
-      
-      refetch()
+      await fetchTweets.mutateAsync()
     } catch (error) {
-      toast.error('Failed to fetch tweets. Please try again.')
+      // Error handling is done by the hook, but add specific message for API credentials
+      if (error instanceof Error && error.message.includes('Bearer Token')) {
+        toast.error('X API credentials needed. See setup instructions below.')
+      }
     }
   }
 
@@ -244,11 +211,11 @@ export default function FeedsPage() {
                 variant="outline"
                 size="sm"
                 onClick={handleFetchRealTweets}
-                disabled={isTweetsLoading || targets.length === 0}
+                disabled={isTweetsLoading || fetchTweets.isPending || targets.length === 0}
                 className="glass border-white/20 hover:bg-blue-50/50"
               >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Sync
+                <RefreshCw className={`h-4 w-4 mr-2 ${fetchTweets.isPending ? 'animate-spin' : ''}`} />
+                {fetchTweets.isPending ? 'Syncing...' : 'Sync'}
               </Button>
               
               <Button
@@ -456,10 +423,11 @@ export default function FeedsPage() {
               ) : (
                 <Button 
                   onClick={handleFetchRealTweets}
+                  disabled={fetchTweets.isPending}
                   className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-full px-6 py-2"
                 >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Sync Tweets
+                  <RefreshCw className={`h-4 w-4 mr-2 ${fetchTweets.isPending ? 'animate-spin' : ''}`} />
+                  {fetchTweets.isPending ? 'Syncing...' : 'Sync Tweets'}
                 </Button>
               )}
             </div>
@@ -539,11 +507,11 @@ export default function FeedsPage() {
                   </Button>
                   <Button
                     onClick={handleScheduleReply}
-                    disabled={!generatedReply.trim() || isGeneratingReply}
+                    disabled={!generatedReply.trim() || isGeneratingReply || queueReply.isPending}
                     className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-full px-6"
                   >
                     <Send className="h-4 w-4 mr-2" />
-                    Schedule Reply
+                    {queueReply.isPending ? 'Scheduling...' : 'Schedule Reply'}
                   </Button>
                 </div>
               </div>

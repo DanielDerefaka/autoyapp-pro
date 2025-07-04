@@ -9,8 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Plus, User, Calendar, MessageSquare, TrendingUp, MoreHorizontal, Trash2, Edit } from 'lucide-react'
-import { useTargets, useAddTarget, useDeleteTarget, useUpdateTarget, type CreateTargetData } from '@/hooks/use-targets'
-import { useXAccounts } from '@/hooks/use-x-accounts'
+import { useTargets, useAddTarget, useDeleteTarget, useUpdateTarget, useXAccounts } from '@/hooks/use-api'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -33,7 +32,8 @@ export default function TargetUsersPage() {
   const [editingTarget, setEditingTarget] = useState<any>(null)
 
   const { data: targets = [], isLoading: targetsLoading } = useTargets()
-  const { data: xAccounts = [], isLoading: xAccountsLoading } = useXAccounts()
+  const { data: xAccountsData, isLoading: xAccountsLoading } = useXAccounts()
+  const xAccounts = xAccountsData ? [xAccountsData] : [] // Convert single account to array format
   const addTargetMutation = useAddTarget()
   const deleteTargetMutation = useDeleteTarget()
   const updateTargetMutation = useUpdateTarget()
@@ -54,12 +54,6 @@ export default function TargetUsersPage() {
       return
     }
 
-    const payload: CreateTargetData = {
-      targetUsername: data.targetUsername,
-      xAccountId: xAccounts[0].id, // Use first available X account
-      notes: data.notes,
-    }
-
     try {
       if (editingTarget) {
         await updateTargetMutation.mutateAsync({
@@ -69,17 +63,18 @@ export default function TargetUsersPage() {
             notes: data.notes,
           }
         })
-        toast.success('Target user updated successfully')
         setEditingTarget(null)
       } else {
-        await addTargetMutation.mutateAsync(payload)
-        toast.success('Target user added successfully')
+        await addTargetMutation.mutateAsync({
+          targetUsername: data.targetUsername,
+          notes: data.notes,
+        })
       }
       
       setIsAddDialogOpen(false)
       reset()
     } catch (error) {
-      toast.error(editingTarget ? 'Failed to update target user' : 'Failed to add target user')
+      // Error handling is done by the hooks
     }
   }
 
@@ -94,9 +89,8 @@ export default function TargetUsersPage() {
     if (confirm(`Are you sure you want to remove @${username} from your targets?`)) {
       try {
         await deleteTargetMutation.mutateAsync(targetId)
-        toast.success('Target user removed successfully')
       } catch (error) {
-        toast.error('Failed to remove target user')
+        // Error handling is done by the hook
       }
     }
   }

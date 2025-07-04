@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { Textarea } from '@/components/ui/textarea'
+import { usePublishTweet, useScheduleTweet, useGenerateAITweet, useGenerateAIThread } from '@/hooks/use-api'
 
 interface TweetDraft {
   id: string
@@ -52,9 +53,14 @@ export default function ComposePage() {
   const [isScheduling, setIsScheduling] = useState(false)
   const [scheduledDate, setScheduledDate] = useState('')
   const [scheduledTime, setScheduledTime] = useState('')
-  const [isGenerating, setIsGenerating] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [showAiGenerator, setShowAiGenerator] = useState(false)
+  
+  // TanStack Query hooks
+  const publishTweet = usePublishTweet()
+  const scheduleTweet = useScheduleTweet()
+  const generateAITweet = useGenerateAITweet()
+  const generateAIThread = useGenerateAIThread()
   const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({})
 
   const TWEET_LIMIT = 280
@@ -147,17 +153,8 @@ export default function ComposePage() {
       return
     }
 
-    setIsGenerating(true)
     try {
-      const response = await fetch('/api/ai/generate-tweet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: aiPrompt })
-      })
-
-      if (!response.ok) throw new Error('Failed to generate content')
-
-      const data = await response.json()
+      const data = await generateAITweet.mutateAsync({ prompt: aiPrompt })
       
       // Replace the first tweet with AI-generated content
       setThreadDraft(prev => ({
@@ -180,17 +177,10 @@ export default function ComposePage() {
       })
     } catch (error) {
       console.error('Error generating content:', error)
-      toast({
-        title: "Generation failed",
-        description: "Failed to generate AI content. Please try again.",
-        variant: "destructive"
-      })
-    } finally {
-      setIsGenerating(false)
     }
   }
 
-  const generateAIThread = async () => {
+  const generateAIThreadContent = async () => {
     if (!aiPrompt.trim()) {
       toast({
         title: "Missing prompt",
@@ -200,17 +190,8 @@ export default function ComposePage() {
       return
     }
 
-    setIsGenerating(true)
     try {
-      const response = await fetch('/api/ai/generate-thread', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: aiPrompt })
-      })
-
-      if (!response.ok) throw new Error('Failed to generate thread')
-
-      const data = await response.json()
+      const data = await generateAIThread.mutateAsync({ prompt: aiPrompt })
       
       // Replace entire thread with AI-generated content
       const newTweets = data.tweets.map((content: string, index: number) => ({
@@ -230,74 +211,19 @@ export default function ComposePage() {
       })
     } catch (error) {
       console.error('Error generating thread:', error)
-      toast({
-        title: "Generation failed",
-        description: "Failed to generate AI thread. Please try again.",
-        variant: "destructive"
-      })
-    } finally {
-      setIsGenerating(false)
     }
   }
 
   const publishNow = async () => {
     try {
-      // Check if any tweets have images
       const hasImages = threadDraft.tweets.some(tweet => tweet.images.length > 0)
       
-      let response: Response
-      
-      if (hasImages) {
-        // Use FormData for tweets with images
-        const formData = new FormData()
-        
-        // Add tweets data (without File objects)
-        const tweetsForUpload = threadDraft.tweets.map(tweet => ({
-          content: tweet.content,
-          characterCount: tweet.characterCount
-        }))
-        formData.append('tweets', JSON.stringify(tweetsForUpload))
-        
-        // Add image files
-        threadDraft.tweets.forEach((tweet, tweetIndex) => {
-          tweet.images.forEach((image, imageIndex) => {
-            formData.append(`tweet_${tweetIndex}_image_${imageIndex}`, image)
-          })
-        })
-        
-        response = await fetch('/api/tweets/publish', {
-          method: 'POST',
-          body: formData
-        })
-      } else {
-        // Use JSON for text-only tweets
-        response = await fetch('/api/tweets/publish', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tweets: threadDraft.tweets })
-        })
-      }
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        if (data.needsConnection) {
-          toast({
-            title: "X Account Required",
-            description: data.message || "Please connect your X account first",
-            variant: "destructive"
-          })
-          return
-        }
-        throw new Error(data.error || 'Failed to publish')
-      }
-
-      toast({
-        title: "Published successfully",
-        description: `Your ${threadDraft.tweets.length > 1 ? 'thread' : 'tweet'} has been published to X`
+      await publishTweet.mutateAsync({
+        tweets: threadDraft.tweets,
+        hasImages
       })
 
-      // Reset form
+      // Reset form on success
       setThreadDraft({
         tweets: [{
           id: '1',
@@ -309,11 +235,6 @@ export default function ComposePage() {
       })
     } catch (error) {
       console.error('Error publishing:', error)
-      toast({
-        title: "Publishing failed",
-        description: error instanceof Error ? error.message : "Failed to publish your content. Please try again.",
-        variant: "destructive"
-      })
     }
   }
 
@@ -329,55 +250,15 @@ export default function ComposePage() {
 
     try {
       const scheduledDateTime = new Date(`${scheduledDate}T${scheduledTime}`)
-      
-      // Check if any tweets have images
       const hasImages = threadDraft.tweets.some(tweet => tweet.images.length > 0)
       
-      let response: Response
-      
-      if (hasImages) {
-        // Use FormData for tweets with images
-        const formData = new FormData()
-        
-        // Add tweets data (without File objects)
-        const tweetsForUpload = threadDraft.tweets.map(tweet => ({
-          content: tweet.content,
-          characterCount: tweet.characterCount
-        }))
-        formData.append('tweets', JSON.stringify(tweetsForUpload))
-        formData.append('scheduledFor', scheduledDateTime.toISOString())
-        
-        // Add image files
-        threadDraft.tweets.forEach((tweet, tweetIndex) => {
-          tweet.images.forEach((image, imageIndex) => {
-            formData.append(`tweet_${tweetIndex}_image_${imageIndex}`, image)
-          })
-        })
-        
-        response = await fetch('/api/tweets/schedule', {
-          method: 'POST',
-          body: formData
-        })
-      } else {
-        // Use JSON for text-only tweets
-        response = await fetch('/api/tweets/schedule', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            tweets: threadDraft.tweets,
-            scheduledFor: scheduledDateTime.toISOString()
-          })
-        })
-      }
-
-      if (!response.ok) throw new Error('Failed to schedule')
-
-      toast({
-        title: "Scheduled successfully",
-        description: `Your ${threadDraft.tweets.length > 1 ? 'thread' : 'tweet'} has been scheduled`
+      await scheduleTweet.mutateAsync({
+        tweets: threadDraft.tweets,
+        scheduledFor: scheduledDateTime.toISOString(),
+        hasImages
       })
 
-      // Reset form
+      // Reset form on success
       setThreadDraft({
         tweets: [{
           id: '1',
@@ -392,11 +273,6 @@ export default function ComposePage() {
       setScheduledTime('')
     } catch (error) {
       console.error('Error scheduling:', error)
-      toast({
-        title: "Scheduling failed",
-        description: "Failed to schedule your content. Please try again.",
-        variant: "destructive"
-      })
     }
   }
 
@@ -460,18 +336,18 @@ export default function ComposePage() {
             <div className="flex space-x-3">
               <Button
                 onClick={generateAIContent}
-                disabled={isGenerating || !aiPrompt.trim()}
+                disabled={generateAITweet.isPending || !aiPrompt.trim()}
                 className="shadow-lg hover:scale-105 transition-all duration-200"
               >
-                {isGenerating ? 'Generating...' : 'Generate Tweet'}
+                {generateAITweet.isPending ? 'Generating...' : 'Generate Tweet'}
               </Button>
               <Button
-                onClick={generateAIThread}
-                disabled={isGenerating || !aiPrompt.trim()}
+                onClick={generateAIThreadContent}
+                disabled={generateAIThread.isPending || !aiPrompt.trim()}
                 variant="outline"
                 className="hover:scale-105 transition-all duration-200"
               >
-                {isGenerating ? 'Generating...' : 'Generate Thread'}
+                {generateAIThread.isPending ? 'Generating...' : 'Generate Thread'}
               </Button>
             </div>
           </CardContent>
@@ -650,7 +526,7 @@ export default function ComposePage() {
           {isScheduling ? (
             <Button
               onClick={scheduleContent}
-              disabled={!isValidForPublishing || !scheduledDate || !scheduledTime}
+              disabled={!isValidForPublishing || !scheduledDate || !scheduledTime || scheduleTweet.isPending}
               className="gap-2 shadow-lg hover:scale-105 transition-all duration-200"
             >
               <Calendar className="h-4 w-4" />
@@ -659,7 +535,7 @@ export default function ComposePage() {
           ) : (
             <Button
               onClick={publishNow}
-              disabled={!isValidForPublishing}
+              disabled={!isValidForPublishing || publishTweet.isPending}
               className="gap-2 shadow-lg hover:scale-105 transition-all duration-200"
             >
               <Send className="h-4 w-4" />
