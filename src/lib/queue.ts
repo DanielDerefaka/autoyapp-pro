@@ -341,28 +341,46 @@ export class QueueManager {
       throw new Error('Reply not found')
     }
 
-    const delay = scheduledFor.getTime() - Date.now()
+    // Import rate limiter to calculate optimal delay
+    const { RateLimiter } = await import('./rate-limiter')
     
-    if (delay > 0) {
+    // Calculate optimal delay considering rate limits
+    const optimalDelay = await RateLimiter.calculateOptimalDelay(reply.userId, reply.tweet.targetUserId)
+    const requestedDelay = scheduledFor.getTime() - Date.now()
+    
+    // Use the longer of the two delays to ensure compliance
+    const finalDelay = Math.max(optimalDelay, requestedDelay)
+    
+    const finalScheduledFor = new Date(Date.now() + finalDelay)
+    
+    // Update the database record with the optimal schedule time
+    await prisma.replyQueue.update({
+      where: { id: replyId },
+      data: { scheduledFor: finalScheduledFor }
+    })
+
+    if (finalDelay > 0) {
       await this.addReplyJob({
         replyId: reply.id,
         userId: reply.userId,
         xAccountId: reply.xAccountId,
         tweetId: reply.tweetId,
         replyContent: reply.replyContent,
-        scheduledFor: scheduledFor.toISOString(),
-      }, delay)
+        scheduledFor: finalScheduledFor.toISOString(),
+      }, finalDelay)
     } else {
-      // Schedule immediately if time has passed
+      // Schedule immediately if no delay needed
       await this.addReplyJob({
         replyId: reply.id,
         userId: reply.userId,
         xAccountId: reply.xAccountId,
         tweetId: reply.tweetId,
         replyContent: reply.replyContent,
-        scheduledFor: scheduledFor.toISOString(),
+        scheduledFor: finalScheduledFor.toISOString(),
       })
     }
+
+    console.log(`📅 Reply ${replyId} scheduled for ${finalScheduledFor.toISOString()} (${Math.ceil(finalDelay / 1000 / 60)} minutes from now)`)
   }
 
   static async getQueueStats() {

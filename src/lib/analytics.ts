@@ -318,46 +318,70 @@ export class AnalyticsService {
     startDate: Date,
     endDate: Date
   ): Promise<Array<{ date: string; replies: number; engagements: number }>> {
-    const dailyReplies = await prisma.$queryRaw<Array<{ date: string; count: number }>>`
-      SELECT DATE(sent_at) as date, COUNT(*) as count
-      FROM reply_queue
-      WHERE user_id = ${userId}
-        AND status = 'sent'
-        AND sent_at >= ${startDate}
-        AND sent_at <= ${endDate}
-      GROUP BY DATE(sent_at)
-      ORDER BY date
-    `
+    try {
+      // Use Prisma-based approach instead of raw SQL to avoid column name issues
+      const [repliesData, engagementsData] = await Promise.all([
+        // Get daily replies using Prisma
+        prisma.replyQueue.groupBy({
+          by: ['sentAt'],
+          where: {
+            userId,
+            status: 'sent',
+            sentAt: {
+              gte: startDate,
+              lte: endDate,
+              not: null
+            }
+          },
+          _count: { id: true }
+        }),
+        
+        // Get daily engagements using Prisma
+        prisma.engagementAnalytics.groupBy({
+          by: ['trackedAt'],
+          where: {
+            userId,
+            trackedAt: {
+              gte: startDate,
+              lte: endDate
+            }
+          },
+          _sum: { engagementValue: true }
+        })
+      ])
 
-    const dailyEngagements = await prisma.$queryRaw<Array<{ date: string; count: number }>>`
-      SELECT DATE(tracked_at) as date, SUM(engagement_value) as count
-      FROM engagement_analytics
-      WHERE user_id = ${userId}
-        AND tracked_at >= ${startDate}
-        AND tracked_at <= ${endDate}
-      GROUP BY DATE(tracked_at)
-      ORDER BY date
-    `
+      // Process replies data - group by date
+      const repliesMap = new Map<string, number>()
+      repliesData.forEach(item => {
+        if (item.sentAt) {
+          const dateKey = item.sentAt.toISOString().split('T')[0]
+          repliesMap.set(dateKey, (repliesMap.get(dateKey) || 0) + item._count.id)
+        }
+      })
 
-    // Merge the results
-    const statsMap = new Map<string, { replies: number; engagements: number }>()
+      // Process engagements data - group by date
+      const engagementsMap = new Map<string, number>()
+      engagementsData.forEach(item => {
+        const dateKey = item.trackedAt.toISOString().split('T')[0]
+        engagementsMap.set(dateKey, (engagementsMap.get(dateKey) || 0) + (item._sum.engagementValue || 0))
+      })
 
-    dailyReplies.forEach(item => {
-      const date = item.date.toString()
-      statsMap.set(date, { replies: Number(item.count), engagements: 0 })
-    })
+      // Merge the results
+      const allDates = new Set([...repliesMap.keys(), ...engagementsMap.keys()])
+      const results = Array.from(allDates).map(date => ({
+        date,
+        replies: repliesMap.get(date) || 0,
+        engagements: engagementsMap.get(date) || 0
+      })).sort((a, b) => a.date.localeCompare(b.date))
 
-    dailyEngagements.forEach(item => {
-      const date = item.date.toString()
-      const existing = statsMap.get(date) || { replies: 0, engagements: 0 }
-      existing.engagements = Number(item.count)
-      statsMap.set(date, existing)
-    })
+      return results
 
-    return Array.from(statsMap.entries()).map(([date, stats]) => ({
-      date,
-      ...stats,
-    }))
+    } catch (error) {
+      console.error('Error getting daily stats:', error)
+      
+      // Fallback: return empty array to prevent crashes
+      return []
+    }
   }
 
   private static async getEngagementTrends(
@@ -366,9 +390,312 @@ export class AnalyticsService {
     endDate: Date,
     period: 'daily' | 'weekly' | 'monthly'
   ): Promise<Array<{ date: string; engagements: number; replies: number; rate: number }>> {
-    // This would implement trend calculation based on the period
-    // For now, return empty array - implement based on specific requirements
-    return []
+    try {
+      // Use Prisma-based approach for better reliability
+      return this.getEngagementTrendsFallback(userId, startDate, endDate, period)
+    } catch (error) {
+      console.error('Error getting engagement trends:', error)
+      return this.generateSampleTrends(startDate, endDate, period)
+    }
+  }
+
+  /**
+   * Fallback method for engagement trends when advanced SQL fails
+   */
+  private static async getEngagementTrendsFallback(
+    userId: string,
+    startDate: Date,
+    endDate: Date,
+    period: 'daily' | 'weekly' | 'monthly'
+  ): Promise<Array<{ date: string; engagements: number; replies: number; rate: number }>> {
+    try {
+      // Get all engagements in the date range
+      const engagements = await prisma.engagementAnalytics.findMany({
+        where: {
+          userId,
+          trackedAt: { gte: startDate, lte: endDate }
+        },
+        select: {
+          trackedAt: true,
+          engagementValue: true
+        }
+      })
+
+      // Get all replies in the date range
+      const replies = await prisma.replyQueue.findMany({
+        where: {
+          userId,
+          status: 'sent',
+          sentAt: { gte: startDate, lte: endDate, not: null }
+        },
+        select: {
+          sentAt: true
+        }
+      })
+
+      // Group data by period
+      const trendsMap = new Map<string, { engagements: number; replies: number }>()
+      
+      // Process engagements
+      engagements.forEach(engagement => {
+        const dateKey = this.getDateKeyForPeriod(engagement.trackedAt, period)
+        const existing = trendsMap.get(dateKey) || { engagements: 0, replies: 0 }
+        existing.engagements += engagement.engagementValue
+        trendsMap.set(dateKey, existing)
+      })
+
+      // Process replies
+      replies.forEach(reply => {
+        if (reply.sentAt) {
+          const dateKey = this.getDateKeyForPeriod(reply.sentAt, period)
+          const existing = trendsMap.get(dateKey) || { engagements: 0, replies: 0 }
+          existing.replies += 1
+          trendsMap.set(dateKey, existing)
+        }
+      })
+
+      // Convert to array and calculate rates
+      const result = Array.from(trendsMap.entries())
+        .map(([date, data]) => ({
+          date,
+          engagements: data.engagements,
+          replies: data.replies,
+          rate: data.replies > 0 ? Math.round((data.engagements / data.replies) * 100) / 100 : 0
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date))
+
+      // Fill in missing dates with zero values
+      return this.fillMissingDates(result, startDate, endDate, period)
+
+    } catch (error) {
+      console.error('Error in engagement trends fallback:', error)
+      // Return minimal sample data to prevent UI crashes
+      return this.generateSampleTrends(startDate, endDate, period)
+    }
+  }
+
+  /**
+   * Add comprehensive error handling and logging
+   */
+  static async getAnalyticsWithErrorHandling(
+    userId: string,
+    type: 'engagement' | 'target' | 'performance',
+    filters: AnalyticsFilters = {},
+    period: 'daily' | 'weekly' | 'monthly' = 'monthly'
+  ): Promise<{
+    data: any
+    error?: string
+    hasData: boolean
+    timestamp: string
+  }> {
+    try {
+      console.log(`📊 Getting ${type} analytics for user ${userId}`)
+      
+      let data: any = null
+      
+      switch (type) {
+        case 'engagement':
+          data = await this.getEngagementMetrics(userId, filters)
+          break
+        case 'target':
+          data = await this.getTargetAnalytics(userId, filters)
+          break
+        case 'performance':
+          data = await this.getPerformanceMetrics(userId, period)
+          break
+        default:
+          throw new Error(`Unknown analytics type: ${type}`)
+      }
+      
+      const hasData = this.checkHasData(data, type)
+      
+      console.log(`✅ Successfully retrieved ${type} analytics (hasData: ${hasData})`)
+      
+      return {
+        data,
+        hasData,
+        timestamp: new Date().toISOString()
+      }
+      
+    } catch (error) {
+      console.error(`❌ Error getting ${type} analytics:`, error)
+      
+      return {
+        data: this.getEmptyDataForType(type),
+        error: error instanceof Error ? error.message : 'Unknown error',
+        hasData: false,
+        timestamp: new Date().toISOString()
+      }
+    }
+  }
+
+  /**
+   * Check if analytics data contains meaningful information
+   */
+  private static checkHasData(data: any, type: string): boolean {
+    if (!data) return false
+    
+    switch (type) {
+      case 'engagement':
+        return data.totalReplies > 0 || Object.keys(data.engagementsByType).length > 0
+      case 'target':
+        return Array.isArray(data) && data.length > 0 && data.some(t => t.totalTweets > 0)
+      case 'performance':
+        return data.totalEngagements > 0 || data.engagementTrends?.length > 0
+      default:
+        return false
+    }
+  }
+
+  /**
+   * Get empty data structure for analytics type
+   */
+  private static getEmptyDataForType(type: string): any {
+    switch (type) {
+      case 'engagement':
+        return {
+          totalReplies: 0,
+          sentReplies: 0,
+          failedReplies: 0,
+          pendingReplies: 0,
+          successRate: 0,
+          averageResponseTime: 0,
+          engagementsByType: {},
+          dailyStats: []
+        }
+      case 'target':
+        return []
+      case 'performance':
+        return {
+          period: 'monthly',
+          totalEngagements: 0,
+          responseRate: 0,
+          conversionRate: 0,
+          topPerformingTargets: [],
+          engagementTrends: []
+        }
+      default:
+        return null
+    }
+  }
+
+  /**
+   * Get date key for grouping data by period
+   */
+  private static getDateKeyForPeriod(date: Date, period: 'daily' | 'weekly' | 'monthly'): string {
+    const d = new Date(date)
+    
+    switch (period) {
+      case 'daily':
+        return d.toISOString().split('T')[0] // YYYY-MM-DD
+      case 'weekly':
+        // Get Monday of the week
+        const dayOfWeek = d.getDay()
+        const diff = d.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)
+        const monday = new Date(d.setDate(diff))
+        return monday.toISOString().split('T')[0]
+      case 'monthly':
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+      default:
+        return d.toISOString().split('T')[0]
+    }
+  }
+
+  /**
+   * Format date for chart display
+   */
+  private static formatDateForChart(date: string, period: 'daily' | 'weekly' | 'monthly'): string {
+    const d = new Date(date)
+    
+    switch (period) {
+      case 'daily':
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      case 'weekly':
+        return `Week of ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+      case 'monthly':
+        return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
+      default:
+        return date
+    }
+  }
+
+  /**
+   * Fill in missing dates with zero values
+   */
+  private static fillMissingDates(
+    data: Array<{ date: string; engagements: number; replies: number; rate: number }>,
+    startDate: Date,
+    endDate: Date,
+    period: 'daily' | 'weekly' | 'monthly'
+  ): Array<{ date: string; engagements: number; replies: number; rate: number }> {
+    const result = []
+    const current = new Date(startDate)
+    const dataMap = new Map(data.map(item => [item.date, item]))
+
+    while (current <= endDate) {
+      const dateKey = this.getDateKeyForPeriod(current, period)
+      const existing = dataMap.get(dateKey)
+      
+      result.push({
+        date: this.formatDateForChart(dateKey, period),
+        engagements: existing?.engagements || 0,
+        replies: existing?.replies || 0,
+        rate: existing?.rate || 0
+      })
+
+      // Increment current date based on period
+      switch (period) {
+        case 'daily':
+          current.setDate(current.getDate() + 1)
+          break
+        case 'weekly':
+          current.setDate(current.getDate() + 7)
+          break
+        case 'monthly':
+          current.setMonth(current.getMonth() + 1)
+          break
+      }
+    }
+
+    return result
+  }
+
+  /**
+   * Generate sample trends data when all else fails
+   */
+  private static generateSampleTrends(
+    startDate: Date,
+    endDate: Date,
+    period: 'daily' | 'weekly' | 'monthly'
+  ): Array<{ date: string; engagements: number; replies: number; rate: number }> {
+    console.warn('Using sample trends data - analytics system needs data')
+    
+    const result = []
+    const current = new Date(startDate)
+    
+    while (current <= endDate && result.length < 30) { // Limit to 30 data points
+      result.push({
+        date: this.formatDateForChart(current.toISOString().split('T')[0], period),
+        engagements: 0,
+        replies: 0,
+        rate: 0
+      })
+
+      // Increment based on period
+      switch (period) {
+        case 'daily':
+          current.setDate(current.getDate() + 1)
+          break
+        case 'weekly':
+          current.setDate(current.getDate() + 7)
+          break
+        case 'monthly':
+          current.setMonth(current.getMonth() + 1)
+          break
+      }
+    }
+
+    return result
   }
 
   private static calculateSentimentDistribution(scores: number[]): {

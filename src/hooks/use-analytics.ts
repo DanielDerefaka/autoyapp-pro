@@ -48,19 +48,27 @@ export interface PerformanceMetrics {
   }>
 }
 
-// Get engagement metrics
+// Get engagement metrics with aggressive caching
 export function useEngagementMetrics(params: {
   startDate?: string
   endDate?: string
   targetUserId?: string
   engagementType?: string
 } = {}) {
+  // Normalize parameters for consistent caching
+  const normalizedParams = {
+    startDate: params.startDate,
+    endDate: params.endDate,
+    targetUserId: params.targetUserId,
+    engagementType: params.engagementType,
+  }
+
   return useQuery({
-    queryKey: ['analytics', 'engagement', params],
+    queryKey: ['analytics', 'engagement', 'metrics', normalizedParams],
     queryFn: async (): Promise<EngagementMetrics> => {
       const searchParams = new URLSearchParams()
       
-      Object.entries(params).forEach(([key, value]) => {
+      Object.entries(normalizedParams).forEach(([key, value]) => {
         if (value) {
           searchParams.set(key, value)
         }
@@ -72,7 +80,8 @@ export function useEngagementMetrics(params: {
       }
       return response.json()
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 10 * 60 * 1000, // 10 minutes - analytics don't change often
+    gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
   })
 }
 

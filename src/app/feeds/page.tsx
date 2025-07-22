@@ -37,7 +37,7 @@ export default function FeedsPage() {
   const generateReply = useGenerateReply()
   const queueReply = useQueueReply()
 
-  const targets = targetsData || []
+  const targets = targetsData?.data || []
   const tweets = tweetsData?.tweets || []
 
   // Filter tweets based on search query

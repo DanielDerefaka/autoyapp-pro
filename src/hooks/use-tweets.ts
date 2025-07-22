@@ -43,33 +43,37 @@ export interface TweetFilters {
   offset?: number
 }
 
-// Get tweets with filters
+// Get tweets with optimized caching and pagination
 export function useTweets(filters: TweetFilters = {}) {
-  const queryKey = ['tweets', JSON.stringify(filters)] // Use stable key
+  // Normalize filters to prevent cache misses
+  const normalizedFilters = {
+    targetUserId: filters.targetUserId,
+    sentiment: filters.sentiment,
+    sortBy: filters.sortBy || 'recent',
+    limit: filters.limit || 20,
+    offset: filters.offset || 0,
+  }
   
   return useQuery({
-    queryKey,
+    queryKey: ['tweets', 'list', normalizedFilters],
     queryFn: async (): Promise<TweetsResponse> => {
-      console.log('Fetching tweets with filters:', filters)
       const searchParams = new URLSearchParams()
       
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined) {
+      // Only add defined parameters
+      Object.entries(normalizedFilters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
           searchParams.set(key, value.toString())
         }
       })
       
-      const response = await fetch(`/api/tweets?${searchParams}&_t=${Date.now()}`, {
-        cache: 'no-cache'
-      })
+      const response = await fetch(`/api/tweets?${searchParams}`)
       if (!response.ok) {
         throw new Error('Failed to fetch tweets')
       }
-      const data = await response.json()
-      console.log('Fetched tweets:', data)
-      return data
+      return response.json()
     },
-    staleTime: 10 * 1000, // 10 seconds - some minimal caching to prevent infinite loading
+    staleTime: 1 * 60 * 1000, // 1 minute - tweets change frequently
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
     refetchInterval: false,
     refetchOnWindowFocus: false,
     refetchOnMount: true,

@@ -9,7 +9,7 @@ const createTargetSchema = z.object({
   notes: z.string().optional(),
 })
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const authResult = await auth()
     const clerkId = authResult?.userId
@@ -26,8 +26,23 @@ export async function GET() {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
+    // Parse query parameters for pagination and filtering
+    const url = new URL(request.url)
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 100) // Max 100 items
+    const offset = parseInt(url.searchParams.get('offset') || '0')
+    const isActive = url.searchParams.get('isActive')
+
+    // Build where clause
+    const whereClause: any = { userId: user.id }
+    if (isActive !== null && isActive !== undefined && isActive !== '') {
+      whereClause.isActive = isActive === 'true'
+    }
+
+    // Get total count for pagination metadata
+    const totalCount = await prisma.targetUser.count({ where: whereClause })
+
     const targets = await prisma.targetUser.findMany({
-      where: { userId: user.id },
+      where: whereClause,
       include: {
         xAccount: {
           select: {
@@ -42,9 +57,23 @@ export async function GET() {
         },
       },
       orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: offset,
     })
 
-    return NextResponse.json(targets)
+    const hasMore = offset + limit < totalCount
+
+    return NextResponse.json({
+      data: targets,
+      pagination: {
+        limit,
+        offset,
+        totalCount,
+        hasMore,
+        page: Math.floor(offset / limit) + 1,
+        totalPages: Math.ceil(totalCount / limit),
+      },
+    })
   } catch (error) {
     console.error('Error fetching targets:', error)
     return NextResponse.json(

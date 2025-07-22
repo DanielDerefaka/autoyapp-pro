@@ -25,7 +25,8 @@ export default function DashboardPage() {
   const { data: user, isLoading: userLoading } = useUser()
   const { data: queueStatus, isLoading: queueLoading } = useQueueStatus()
   const { data: metrics, isLoading: metricsLoading } = useEngagementMetrics()
-  const { data: targets, isLoading: targetsLoading } = useTargets()
+  const { data: targetsResponse, isLoading: targetsLoading } = useTargets()
+  const targets = targetsResponse?.data || []
 
   if (userLoading || queueLoading || metricsLoading || targetsLoading) {
     return (

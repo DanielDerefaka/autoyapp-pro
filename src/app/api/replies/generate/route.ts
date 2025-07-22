@@ -61,14 +61,48 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate personalized reply using OpenAI with user's custom styles
-    const reply = await generatePersonalizedReply(tweetContent, targetUsername, context, userStyles)
+    // Try the new viral reply system first, fallback to original if needed
+    try {
+      const { viralReplyGenerator } = await import('@/lib/viral-reply-generator')
+      
+      const viralReply = await viralReplyGenerator.generateViralReply({
+        tweetContent,
+        authorUsername: targetUsername,
+        userStyles,
+        context: {
+          sentiment: context?.sentiment || 0,
+        },
+        viralStrategy: 'auto'
+      })
 
-    return NextResponse.json({
-      reply,
-      tweetId,
-      generatedAt: new Date().toISOString()
-    })
+      return NextResponse.json({
+        reply: viralReply.content,
+        tweetId,
+        viralScore: viralReply.viralScore,
+        strategy: viralReply.strategy,
+        psychology: {
+          hooks: viralReply.hooks,
+          triggers: viralReply.psychologyTriggers
+        },
+        confidence: viralReply.confidence,
+        reasoning: viralReply.reasoning,
+        optimizedFor: viralReply.optimizedFor,
+        generatedAt: new Date().toISOString(),
+        enhanced: true // Flag to indicate this is the enhanced version
+      })
+    } catch (viralError) {
+      console.log('Viral system failed, using original system:', viralError)
+      
+      // Fallback to original system
+      const reply = await generatePersonalizedReply(tweetContent, targetUsername, context, userStyles)
+
+      return NextResponse.json({
+        reply,
+        tweetId,
+        generatedAt: new Date().toISOString(),
+        enhanced: false // Flag to indicate this is the fallback
+      })
+    }
   } catch (error) {
     console.error('Error generating reply:', error)
     
