@@ -11,18 +11,36 @@ async function handleRequest(request: NextRequest) {
     const userAgent = request.headers.get('user-agent') || ''
     const cronSecret = process.env.CRON_SECRET || 'dev_cron_secret_12345'
 
+    // Debug logging for cron-job.org troubleshooting
+    console.log('🔍 Debug - Auth header:', authHeader)
+    console.log('🔍 Debug - Expected:', `Bearer ${cronSecret}`)
+    console.log('🔍 Debug - User agent:', userAgent)
+    console.log('🔍 Debug - NODE_ENV:', process.env.NODE_ENV)
+
     const isValidAuth = 
       authHeader === `Bearer ${cronSecret}` || 
       userAgent.includes('UptimeRobot') ||
       userAgent.includes('vercel-cron') ||
       userAgent.includes('internal-cron-heartbeat') ||
+      userAgent.includes('cron-job.org') ||
+      userAgent.includes('easycron') ||
+      userAgent.includes('cronitor') ||
+      userAgent.toLowerCase().includes('cron') ||
       process.env.NODE_ENV === 'development'
 
     if (!isValidAuth) {
       console.log('❌ Unified processor authentication failed')
-      console.log('Auth header:', authHeader ? `${authHeader.substring(0, 20)}...` : 'null')
+      console.log('Auth header:', authHeader ? `${authHeader.substring(0, 50)}...` : 'null')
       console.log('User agent:', userAgent)
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      console.log('Expected Bearer token:', `Bearer ${cronSecret}`)
+      return NextResponse.json({ 
+        error: 'Unauthorized',
+        debug: {
+          receivedAuth: authHeader ? `${authHeader.substring(0, 20)}...` : null,
+          expectedAuth: `Bearer ${cronSecret.substring(0, 10)}...`,
+          userAgent: userAgent
+        }
+      }, { status: 401 })
     }
 
     console.log('🚀 Unified processor started - handling replies, scheduled tweets, and token refresh...')
