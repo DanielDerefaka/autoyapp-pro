@@ -31,8 +31,9 @@ export default function TargetUsersPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingTarget, setEditingTarget] = useState<any>(null)
 
-  const { data: targets = [], isLoading: targetsLoading } = useTargets()
+  const { data: targetsData, isLoading: targetsLoading } = useTargets()
   const { data: xAccountsData, isLoading: xAccountsLoading } = useXAccounts()
+  const targets = targetsData?.data || []
   const xAccounts = Array.isArray(xAccountsData) ? xAccountsData : (xAccountsData ? [xAccountsData] : [])
   
   console.log('X Accounts data:', xAccountsData)

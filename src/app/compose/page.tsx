@@ -171,10 +171,25 @@ export default function ComposePage() {
 
       setAiPrompt('')
       setShowAiGenerator(false)
-      toast({
-        title: "Content generated",
-        description: "AI has generated your tweet content"
-      })
+
+      // Show success with personalization info
+      if (data.personalStyleUsed) {
+        toast({
+          title: "Content generated with your style",
+          description: "AI used your personal tweet analysis to match your voice"
+        })
+      } else if (data.warning) {
+        toast({
+          title: "Content generated (basic)",
+          description: data.warning,
+          variant: "default"
+        })
+      } else {
+        toast({
+          title: "Content generated",
+          description: "AI has generated your tweet content"
+        })
+      }
     } catch (error) {
       console.error('Error generating content:', error)
     }

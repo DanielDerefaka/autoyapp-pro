@@ -1,5 +1,5 @@
-// Simple in-memory scheduler for development
-// In production, use a proper job queue like Bull/BullMQ with Redis
+// Enhanced scheduler that works in both development and production
+// Uses internal endpoints for better Vercel compatibility
 
 let schedulerInterval: NodeJS.Timeout | null = null
 
@@ -20,12 +20,20 @@ export class TweetScheduler {
         const cronSecret = process.env.CRON_SECRET
         console.log('🔑 Scheduler sending auth:', cronSecret ? `Bearer ${cronSecret.substring(0, 10)}...` : 'null')
         
+        // Get the base URL dynamically
+        const baseUrl = process.env.VERCEL_URL 
+          ? `https://${process.env.VERCEL_URL}`
+          : process.env.APP_URL || 'http://localhost:3000'
+        
+        console.log('🌐 Scheduler calling:', `${baseUrl}/api/cron/process-scheduled-tweets`)
+        
         // Call our cron endpoint
-        const response = await fetch(`http://localhost:3000/api/cron/process-scheduled-tweets`, {
+        const response = await fetch(`${baseUrl}/api/cron/process-scheduled-tweets`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${cronSecret}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'User-Agent': 'internal-cron-scheduler'
           }
         })
 
@@ -65,11 +73,19 @@ export class TweetScheduler {
       const cronSecret = process.env.CRON_SECRET
       console.log('🔑 Manual trigger sending auth:', cronSecret ? `Bearer ${cronSecret.substring(0, 10)}...` : 'null')
       
-      const response = await fetch(`http://localhost:3000/api/cron/process-scheduled-tweets`, {
+      // Get the base URL dynamically
+      const baseUrl = process.env.VERCEL_URL 
+        ? `https://${process.env.VERCEL_URL}`
+        : process.env.APP_URL || 'http://localhost:3000'
+      
+      console.log('🌐 Manual trigger calling:', `${baseUrl}/api/cron/process-scheduled-tweets`)
+      
+      const response = await fetch(`${baseUrl}/api/cron/process-scheduled-tweets`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${cronSecret}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'User-Agent': 'manual-cron-trigger'
         }
       })
 

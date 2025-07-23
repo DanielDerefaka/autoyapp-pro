@@ -1,10 +1,6 @@
-/**
- * Advanced Viral Reply Generation System
- * Uses cutting-edge viral content psychology and AI optimization
- */
-
-import OpenAI from 'openai'
+import { ViralStylesManager } from './viral-styles'
 import { prisma } from './prisma'
+import OpenAI from 'openai'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -13,20 +9,15 @@ const openai = new OpenAI({
 export interface ViralReplyOptions {
   tweetContent: string
   authorUsername: string
-  targetUserId?: string
   userStyles?: any
+  userId?: string
   context?: {
-    authorFollowers?: number
-    tweetEngagement?: { likes: number; retweets: number; replies: number }
-    authorVerified?: boolean
-    tweetAge?: number // hours
-    industry?: string
     sentiment?: number
   }
-  viralStrategy?: 'curiosity' | 'controversy' | 'value' | 'emotion' | 'authority' | 'social-proof' | 'auto'
+  viralStrategy?: 'auto' | 'curiosity-gap' | 'social-proof-amplifier' | 'value-bomb' | 'controversy-controlled'
 }
 
-export interface ViralReply {
+export interface ViralReplyResult {
   content: string
   viralScore: number
   strategy: string
@@ -34,460 +25,227 @@ export interface ViralReply {
   psychologyTriggers: string[]
   confidence: number
   reasoning: string
-  fallbackUsed: boolean
-  optimizedFor: 'likes' | 'replies' | 'retweets' | 'balance'
+  optimizedFor: string
 }
 
 export class ViralReplyGenerator {
   
-  /**
-   * Generate a viral-optimized reply using advanced AI and psychology
-   */
-  async generateViralReply(options: ViralReplyOptions): Promise<ViralReply> {
-    try {
-      // Analyze tweet content for viral potential
-      const tweetAnalysis = await this.analyzeTweetForViral(options.tweetContent, options.context)
+  async generateViralReply(options: ViralReplyOptions): Promise<ViralReplyResult> {
+    const {
+      tweetContent,
+      authorUsername,
+      userStyles,
+      userId,
+      context = {},
+      viralStrategy = 'auto'
+    } = options
+
+    // Get user's personal style analysis if userId provided
+    let personalStyle = null
+    let personalStyleError = null
+    if (userId) {
+      try {
+        personalStyle = await this.getUserPersonalStyle(userId)
+        console.log('🎯 Using personal style for reply generation')
+      } catch (error) {
+        personalStyleError = error.message
+        console.log('⚠️ Could not fetch user personal style:', error.message)
+      }
+    }
+
+    // Get viral combo suggestion
+    const viralCombo = ViralStylesManager.suggestViralCombo(tweetContent, 'balance')
+    
+    // Use specific strategy if provided, otherwise use suggested
+    const strategy = viralStrategy === 'auto' 
+      ? viralCombo.strategy 
+      : ViralStylesManager.getStrategy(viralStrategy) || viralCombo.strategy
+    
+    const personality = viralCombo.personality
+
+    // Generate enhanced viral prompt with personal style
+    const viralPrompt = this.generateEnhancedViralPrompt(
+      personality,
+      strategy,
+      {
+        tweetContent,
+        authorUsername,
+        topic: this.extractTopic(tweetContent),
+        contentType: this.classifyContent(tweetContent)
+      },
+      personalStyle,
+      userStyles
+    )
+
+    // Generate reply using OpenAI
+    const reply = await this.generateWithOpenAI(viralPrompt, userStyles, personalStyle)
+    
+    // Calculate viral score (higher with personal style)
+    const baseScore = personality.viralScore * strategy.effectiveness
+    const personalStyleBonus = personalStyle ? 0.15 : 0
+    const viralScore = Math.min(baseScore + personalStyleBonus, 1.0)
+
+    return {
+      content: reply,
+      viralScore,
+      strategy: strategy.name,
+      hooks: personality.hooks.slice(0, 3),
+      psychologyTriggers: strategy.triggers,
+      confidence: personalStyle ? 0.92 : 0.85,
+      reasoning: personalStyle 
+        ? `${viralCombo.reasoning} Enhanced with your personal writing style.`
+        : personalStyleError 
+        ? `${viralCombo.reasoning} Note: ${personalStyleError}`
+        : viralCombo.reasoning,
+      optimizedFor: personalStyle ? 'your unique voice + viral engagement' : 'balanced engagement',
+      personalStyleUsed: !!personalStyle
+    }
+  }
+
+  private async getUserPersonalStyle(userId: string) {
+    // Get the user's most recent style analysis
+    const latestAnalysis = await prisma.userStyleAnalysis.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' }
+    })
+
+    if (!latestAnalysis) {
+      // Check if user has any tweets to analyze
+      const userTweets = await prisma.userTweet.findMany({
+        where: { userId },
+        take: 5
+      })
       
-      // Determine optimal viral strategy
-      const strategy = options.viralStrategy === 'auto' ? 
-        this.selectOptimalStrategy(tweetAnalysis) : 
-        options.viralStrategy || 'value'
-      
-      // Generate primary viral reply
-      const primaryReply = await this.generatePrimaryViralReply(options, tweetAnalysis, strategy)
-      
-      // Validate and optimize the reply
-      const optimizedReply = await this.optimizeReplyForViral(primaryReply, tweetAnalysis)
-      
-      // Calculate viral score
-      const viralScore = this.calculateViralScore(optimizedReply, tweetAnalysis)
-      
-      return {
-        content: optimizedReply.content,
-        viralScore,
-        strategy: strategy,
-        hooks: optimizedReply.hooks,
-        psychologyTriggers: optimizedReply.triggers,
-        confidence: optimizedReply.confidence,
-        reasoning: optimizedReply.reasoning,
-        fallbackUsed: false,
-        optimizedFor: this.determineOptimizationTarget(tweetAnalysis)
+      if (userTweets.length > 0) {
+        console.log(`🧠 User has ${userTweets.length} tweets but no analysis. Consider analyzing their tweets first.`)
+      } else {
+        console.log(`📝 User has no tweets analyzed yet. They should visit /user-feed to analyze their tweets.`)
       }
       
-    } catch (error) {
-      console.error('Viral reply generation failed:', error)
-      
-      // Advanced fallback system
-      return this.generateIntelligentFallback(options)
+      throw new Error('No personal style analysis found. Please analyze your tweets first at /user-feed')
     }
+
+    const analysis = JSON.parse(latestAnalysis.analysis || '{}')
+    console.log(`✅ Using personal style analysis from ${latestAnalysis.createdAt.toDateString()}`)
+    return analysis
   }
 
-  /**
-   * Analyze tweet content for viral potential and psychology
-   */
-  private async analyzeTweetForViral(tweetContent: string, context?: any): Promise<any> {
-    const analysisPrompt = `As a viral content analyst who's studied millions of tweets, analyze this content:
+  private generateEnhancedViralPrompt(
+    personality: any,
+    strategy: any,
+    context: any,
+    personalStyle: any,
+    userStyles: any
+  ): string {
+    const { tweetContent, authorUsername } = context
+    const userTone = userStyles?.tone || personalStyle?.writingStyle?.tone || 'casual'
+    const userLength = userStyles?.length || 'short'
+    
+    return `You are replying to this tweet: "${tweetContent}"
 
-TWEET: "${tweetContent}"
-${context ? `CONTEXT: ${JSON.stringify(context)}` : ''}
+REPLY REQUIREMENTS:
+- Keep it ${userLength === 'short' ? 'under 50 characters' : userLength === 'medium' ? '50-100 characters' : '100-150 characters'}
+- Sound like a real human, NOT AI
+- Be ${userTone} and natural
+- NO bullet points, numbered lists, or ** formatting
+- NO emojis unless the original tweet has them
+- Make it conversational and authentic
+- Connect directly to what they posted about
 
-Analyze and return JSON with:
-{
-  "emotion_primary": "primary emotion (excitement, frustration, curiosity, etc.)",
-  "emotion_secondary": ["list", "of", "secondary", "emotions"],
-  "content_type": "announcement|question|insight|story|complaint|celebration|other",
-  "viral_potential": 0.1-1.0,
-  "engagement_triggers": ["curiosity", "controversy", "relatability", "authority", "etc"],
-  "topic_category": "tech|business|personal|lifestyle|etc",
-  "conversation_starters": ["what questions/comments this could generate"],
-  "pain_points": ["problems or challenges mentioned"],
-  "opportunities": ["engagement opportunities"],
-  "tone_energy": "low|medium|high",
-  "keywords_viral": ["key", "viral", "words"],
-  "psychological_hooks": ["status", "belonging", "curiosity", "fear", "joy", "etc"],
-  "reply_difficulty": "easy|medium|hard",
-  "best_reply_angles": ["different approaches to reply"],
-  "avoid_topics": ["things to avoid in reply"]
-}`
+${personalStyle ? `
+YOUR PERSONAL STYLE (use this):
+- You typically write: ${personalStyle.writingStyle?.tone || 'casual'} tone
+- Your personality: ${personalStyle.writingStyle?.personality || 'authentic'}
+- You often use: ${personalStyle.contentPatterns?.engagementTriggers?.slice(0, 2).join(', ') || 'personal experiences, questions'}
+` : ''}
 
-    try {
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: analysisPrompt }],
-        temperature: 0.3,
-        max_tokens: 500,
-        response_format: { type: 'json_object' }
-      })
+EXAMPLES OF GOOD REPLIES:
+- "Been there! What worked for me was just starting before I felt ready"
+- "This hits different. Took me way too long to learn this lesson"
+- "Exactly! The daily grind is where the magic happens"
+- "100% agree. Consistency beats intensity every time"
 
-      const response = completion.choices[0]?.message?.content
-      if (!response) throw new Error('No analysis response')
-      
-      return JSON.parse(response)
-    } catch (error) {
-      console.error('Tweet analysis failed:', error)
-      return this.getDefaultAnalysis(tweetContent)
-    }
+Generate a natural, human reply that fits YOUR voice:`
   }
 
-  /**
-   * Generate primary viral reply using advanced prompting
-   */
-  private async generatePrimaryViralReply(
-    options: ViralReplyOptions, 
-    analysis: any, 
-    strategy: string
-  ): Promise<any> {
-    
-    const userStyles = options.userStyles || this.getDefaultStyles()
-    
-    const viralSystemPrompt = `You are the world's top viral content strategist. You've analyzed 10M+ viral tweets and know exactly what psychology makes content explode.
-
-VIRAL REPLY MASTERY:
-
-🧠 PSYCHOLOGY TRIGGERS:
-- Curiosity Gap: Create questions that demand answers
-- Social Proof: "I've seen this work..." / "Most people don't realize..."
-- Authority: Share insider knowledge or contrarian views
-- Surprise: Challenge assumptions or flip perspectives
-- Relatability: Connect deeply with shared experiences
-- Status: Help them look smart by association
-- Belonging: Create "us vs them" or community feeling
-
-🎯 VIRAL STRATEGIES BY TYPE:
-1. CURIOSITY: "Here's what most people miss..." / "Plot twist:" / "The real question is..."
-2. CONTROVERSY: "Unpopular opinion:" / "This is actually backwards..." / "Hot take:"
-3. VALUE: "Here's the framework..." / "3 things I learned..." / "The secret is..."
-4. EMOTION: "This hit me different..." / "I felt this in my soul..." / "This is why..."
-5. AUTHORITY: "Having worked with 100+ companies..." / "From someone who's been there..."
-6. SOCIAL-PROOF: "Everyone's talking about..." / "This is the pattern I see..."
-
-🚀 VIRAL HOOKS THAT WORK:
-- "This reminds me of when..." (story)
-- "Everyone's doing X, but..." (contrarian)
-- "I used to think X until..." (transformation)
-- "The real reason this matters..." (insight)
-- "What if I told you..." (curiosity)
-- "This is exactly why..." (explanation)
-- "Fun fact most people don't know..." (knowledge)
-- "The thing nobody talks about..." (insider info)
-- "This changes everything because..." (implication)
-- "I've seen this movie before..." (pattern recognition)
-
-USER PROFILE:
-- Tone: ${userStyles.tone} (but viral-optimized)
-- Personality: ${userStyles.personality} 
-- Topics: ${userStyles.topics_of_interest?.join(', ') || 'business/tech'}
-- Voice: ${userStyles.custom_instructions || 'authentic expert'}
-
-TARGET STRATEGY: ${strategy.toUpperCase()}
-TWEET ANALYSIS: ${JSON.stringify(analysis)}
-
-VIRAL REPLY RULES:
-1. Start with a hook that stops scrolls (first 5 words critical)
-2. Add genuine insight or value (no generic responses)
-3. Create emotional resonance with the audience
-4. Include subtle engagement bait (questions, controversial takes)
-5. Match energy level of original tweet
-6. Sound like a real expert, never robotic
-7. Make people want to like/share/reply
-8. Keep under 280 characters
-9. NO @mentions or promotional content
-10. Make it shareable and quotable
-
-GENERATE A REPLY THAT GOES VIRAL.`
-
-    const userPrompt = `VIRAL REPLY MISSION:
-
-ORIGINAL TWEET: "${options.tweetContent}"
-AUTHOR: @${options.authorUsername}
-
-VIRAL ANALYSIS:
-${JSON.stringify(analysis, null, 2)}
-
-STRATEGY TO USE: ${strategy.toUpperCase()}
-
-YOUR MISSION: Create a reply that will:
-- Get 100+ likes minimum
-- Generate 10+ replies/comments
-- Be the type people screenshot and share
-- Position you as the expert in this space
-- Create genuine value for readers
-
-VIRAL PSYCHOLOGY TO APPLY:
-Based on the analysis, use the most effective psychological triggers and hooks.
-
-SPECIFIC REQUIREMENTS:
-1. Open with one of the viral hooks that fits this content
-2. Add a unique angle nobody else will have
-3. Include subtle engagement bait
-4. Make it quotable and memorable
-5. Sound like it comes from someone with real expertise
-
-Return JSON with:
-{
-  "content": "Your viral reply text",
-  "hooks": ["hook1", "hook2"],
-  "triggers": ["psychology1", "psychology2"],
-  "confidence": 0.95,
-  "reasoning": "Why this will go viral",
-  "engagement_type": "likes|replies|retweets"
-}`
-
+  private async generateWithOpenAI(viralPrompt: string, userStyles?: any, personalStyle?: any): Promise<string> {
     try {
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
-          { role: "system", content: viralSystemPrompt },
-          { role: "user", content: userPrompt }
+          { role: "system", content: "You are a human replying naturally to tweets. Keep responses short, authentic, and conversational. No AI-like formatting." },
+          { role: "user", content: viralPrompt }
         ],
-        temperature: 0.85,
-        max_tokens: 300,
-        presence_penalty: 0.6,
-        frequency_penalty: 0.3,
-        response_format: { type: 'json_object' }
+        max_tokens: 50, // Much shorter responses
+        temperature: 0.9, // More creative and human-like
+        presence_penalty: 0.6, // Avoid repetitive patterns
+        frequency_penalty: 0.7, // Encourage more diverse language
       })
 
-      const response = completion.choices[0]?.message?.content
-      if (!response) throw new Error('No viral reply generated')
+      const reply = completion.choices[0]?.message?.content?.trim()
+      
+      if (!reply) {
+        throw new Error('No reply generated by OpenAI')
+      }
 
-      return JSON.parse(response)
+      // Clean up the reply
+      return reply
+        .replace(/^["']|["']$/g, '') // Remove surrounding quotes
+        .replace(/@\w+/g, '') // Remove any @ mentions
+        .trim()
+
     } catch (error) {
-      console.error('Primary viral reply generation failed:', error)
-      throw error
+      console.error('OpenAI API error in viral generator:', error)
+      
+      // Fallback to template-based generation
+      return this.generateFallbackReply(userStyles?.tweetContent || 'This is interesting!')
     }
   }
 
-  /**
-   * Optimize reply for maximum viral potential
-   */
-  private async optimizeReplyForViral(reply: any, analysis: any): Promise<any> {
-    const optimizationPrompt = `As a viral optimization expert, improve this reply for maximum engagement:
-
-CURRENT REPLY: "${reply.content}"
-TWEET ANALYSIS: ${JSON.stringify(analysis)}
-HOOKS USED: ${reply.hooks?.join(', ')}
-PSYCHOLOGY: ${reply.triggers?.join(', ')}
-
-OPTIMIZATION CHECKLIST:
-✓ Hook strength (first 5 words grab attention?)
-✓ Emotional resonance (does it create feeling?)
-✓ Value density (packed with insight?)
-✓ Engagement bait (invites response?)
-✓ Shareability (quotable/screenshot-worthy?)
-✓ Authority positioning (sounds expert?)
-✓ Conversation starter (generates replies?)
-
-VIRAL OPTIMIZATION RULES:
-1. Strengthen the hook if weak
-2. Add more emotional weight
-3. Include subtle controversy or surprise
-4. Make it more quotable
-5. Add engagement triggers
-6. Ensure it's under 280 characters
-7. Remove any boring or generic language
-
-Return the OPTIMIZED version in JSON:
-{
-  "content": "Optimized viral reply",
-  "hooks": ["improved hooks"],
-  "triggers": ["psychology used"],
-  "confidence": 0.9,
-  "reasoning": "Why this optimization will work",
-  "improvements": ["what was improved"]
-}`
-
-    try {
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: optimizationPrompt }],
-        temperature: 0.7,
-        max_tokens: 200,
-        response_format: { type: 'json_object' }
-      })
-
-      const response = completion.choices[0]?.message?.content
-      if (!response) return reply // Return original if optimization fails
-
-      const optimized = JSON.parse(response)
-      return optimized.content ? optimized : reply
-    } catch (error) {
-      console.error('Reply optimization failed:', error)
-      return reply // Return original if optimization fails
-    }
-  }
-
-  /**
-   * Select optimal viral strategy based on tweet analysis
-   */
-  private selectOptimalStrategy(analysis: any): string {
-    const viralPotential = analysis.viral_potential || 0.5
-    const contentType = analysis.content_type || 'other'
-    const engagementTriggers = analysis.engagement_triggers || []
+  private generateFallbackReply(tweetContent: string): string {
+    const content = tweetContent.toLowerCase()
     
-    // Strategy selection logic based on analysis
-    if (contentType === 'question' && viralPotential > 0.7) {
-      return 'authority' // Position as expert answering
-    }
-    
-    if (engagementTriggers.includes('controversy') && viralPotential > 0.6) {
-      return 'controversy' // Safe controversial take
-    }
-    
-    if (contentType === 'announcement' || contentType === 'celebration') {
-      return 'social-proof' // Amplify with social proof
-    }
-    
-    if (analysis.emotion_primary === 'curiosity' || contentType === 'insight') {
-      return 'curiosity' // Build on curiosity
-    }
-    
-    if (engagementTriggers.includes('relatability')) {
-      return 'emotion' // Connect emotionally
-    }
-    
-    // Default to value-driven approach
-    return 'value'
-  }
-
-  /**
-   * Calculate viral score based on multiple factors
-   */
-  private calculateViralScore(reply: any, analysis: any): number {
-    let score = 0.5 // Base score
-    
-    // Hook strength (first 5 words)
-    const firstFiveWords = reply.content.split(' ').slice(0, 5).join(' ')
-    const viralHooks = ['this reminds', 'plot twist', 'unpopular opinion', 'here\'s what', 'what if', 'fun fact', 'the real']
-    if (viralHooks.some(hook => firstFiveWords.toLowerCase().includes(hook))) {
-      score += 0.2
-    }
-    
-    // Psychology triggers
-    if (reply.triggers && reply.triggers.length >= 2) {
-      score += 0.15
-    }
-    
-    // Value density (insights, specific information)
-    if (reply.content.includes('because') || reply.content.includes('reason') || reply.content.includes('why')) {
-      score += 0.1
-    }
-    
-    // Engagement bait (questions, controversial takes)
-    if (reply.content.includes('?') || reply.content.toLowerCase().includes('hot take')) {
-      score += 0.1
-    }
-    
-    // Length optimization (80-200 chars tends to perform better)
-    const length = reply.content.length
-    if (length >= 80 && length <= 200) {
-      score += 0.05
-    }
-    
-    // Emotional words
-    const emotionalWords = ['amazing', 'incredible', 'shocking', 'brilliant', 'genius', 'mind-blowing', 'game-changing']
-    if (emotionalWords.some(word => reply.content.toLowerCase().includes(word))) {
-      score += 0.1
-    }
-    
-    return Math.min(score, 1.0)
-  }
-
-  /**
-   * Generate intelligent fallback when AI fails
-   */
-  private generateIntelligentFallback(options: ViralReplyOptions): ViralReply {
-    const content = options.tweetContent.toLowerCase()
-    
-    // Pattern-based fallbacks that still have viral potential
-    let fallbackReply = ''
-    
-    if (content.includes('launch') || content.includes('announce')) {
-      fallbackReply = "This is exactly the type of innovation we need right now. What's been your biggest learning so far?"
-    } else if (content.includes('ai') || content.includes('automation')) {
-      fallbackReply = "The AI revolution is happening faster than most people realize. What's your take on where this leads us?"
-    } else if (content.includes('startup') || content.includes('founder')) {
-      fallbackReply = "The startup journey is wild. What's the one thing you wish you knew before starting?"
+    // Short, natural replies based on content
+    if (content.includes('launch') || content.includes('ship')) {
+      return "Congrats on shipping! 🚀"
+    } else if (content.includes('learn') || content.includes('lesson')) {
+      return "This hits different. Great lesson!"
+    } else if (content.includes('grow') || content.includes('journey')) {
+      return "Been there. The growth journey is wild"
+    } else if (content.includes('build') || content.includes('create')) {
+      return "Love seeing the building process!"
     } else if (content.includes('?')) {
-      fallbackReply = "Great question. Here's what I've learned from experience - it's not what most people expect..."
-    } else if (content.includes('challenge') || content.includes('difficult')) {
-      fallbackReply = "I've been there. The real breakthrough happens when you flip the problem upside down."
+      return "Great question. Makes you think"
     } else {
-      fallbackReply = "This hits different. What most people don't realize is the hidden psychology behind this..."
-    }
-    
-    return {
-      content: fallbackReply,
-      viralScore: 0.6,
-      strategy: 'fallback-intelligent',
-      hooks: ['pattern-based'],
-      psychologyTriggers: ['curiosity', 'relatability'],
-      confidence: 0.7,
-      reasoning: 'Intelligent fallback based on content patterns',
-      fallbackUsed: true,
-      optimizedFor: 'balance'
+      const naturalReplies = [
+        "This is so true",
+        "Exactly my experience too",
+        "100% agree with this",
+        "Been thinking about this lately",
+        "This hits different",
+        "Facts. Learned this the hard way"
+      ]
+      return naturalReplies[Math.floor(Math.random() * naturalReplies.length)]
     }
   }
 
-  /**
-   * Get default styles when user hasn't customized
-   */
-  private getDefaultStyles(): any {
-    return {
-      tone: 'professional',
-      personality: 'insightful',
-      topics_of_interest: ['business', 'technology', 'entrepreneurship'],
-      custom_instructions: 'Provide valuable insights with authority'
+  private extractTopic(content: string): string {
+    const topics = ['ai', 'startup', 'business', 'technology', 'marketing', 'product']
+    for (const topic of topics) {
+      if (content.toLowerCase().includes(topic)) {
+        return topic
+      }
     }
+    return 'general'
   }
 
-  /**
-   * Get default analysis when AI analysis fails
-   */
-  private getDefaultAnalysis(tweetContent: string): any {
-    return {
-      emotion_primary: 'neutral',
-      content_type: 'update',
-      viral_potential: 0.5,
-      engagement_triggers: ['value'],
-      topic_category: 'general',
-      tone_energy: 'medium',
-      reply_difficulty: 'medium'
-    }
-  }
-
-  /**
-   * Determine what the reply should optimize for
-   */
-  private determineOptimizationTarget(analysis: any): 'likes' | 'replies' | 'retweets' | 'balance' {
-    if (analysis.content_type === 'question') return 'replies'
-    if (analysis.engagement_triggers?.includes('controversy')) return 'replies'
-    if (analysis.content_type === 'insight') return 'retweets'
-    if (analysis.viral_potential > 0.8) return 'likes'
-    return 'balance'
-  }
-
-  /**
-   * Store successful viral replies for learning
-   */
-  async storeViralReplySuccess(replyId: string, engagement: {
-    likes: number
-    replies: number
-    retweets: number
-    impressions?: number
-  }): Promise<void> {
-    try {
-      await prisma.engagementAnalytics.create({
-        data: {
-          userId: 'system',
-          engagementType: 'viral_reply_performance',
-          engagementValue: engagement.likes + engagement.replies + engagement.retweets,
-          replyId: replyId,
-        }
-      })
-    } catch (error) {
-      console.error('Failed to store viral reply success:', error)
-    }
+  private classifyContent(content: string): string {
+    if (content.includes('?')) return 'question'
+    if (content.includes('launch') || content.includes('announce')) return 'announcement'
+    if (content.includes('think') || content.includes('opinion')) return 'opinion'
+    return 'insight'
   }
 }
 
+// Export singleton instance
 export const viralReplyGenerator = new ViralReplyGenerator()

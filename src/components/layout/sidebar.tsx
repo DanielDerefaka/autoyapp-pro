@@ -15,7 +15,8 @@ import {
   Bot,
   PenTool,
   Calendar,
-  Sparkles
+  Sparkles,
+  User
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -28,6 +29,7 @@ const navigation = [
   { name: 'Feeds', href: '/feeds', icon: MessageSquare },
   { name: 'Autopilot', href: '/autopilot', icon: Bot },
   { name: 'Target Users', href: '/target-users', icon: Users },
+  { name: 'My Analysis', href: '/user-feed', icon: User },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Queue Manager', href: '/queue-manager', icon: Clock },
   { name: 'Templates', href: '/templates', icon: FileText },

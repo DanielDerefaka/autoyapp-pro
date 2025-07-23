@@ -1,5 +1,6 @@
-import { auth } from '@clerk/nextjs/server'
+import { auth, currentUser } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import OpenAI from 'openai'
 
 const openai = new OpenAI({
@@ -20,69 +21,123 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 })
     }
 
+    // Get or create user
+    let user = await prisma.user.findUnique({
+      where: { clerkId }
+    })
+
+    if (!user) {
+      const clerkUser = await currentUser()
+      if (!clerkUser || !clerkUser.emailAddresses?.[0]?.emailAddress) {
+        return NextResponse.json({ error: 'Unable to get user details' }, { status: 400 })
+      }
+
+      user = await prisma.user.create({
+        data: { 
+          clerkId,
+          email: clerkUser.emailAddresses[0].emailAddress,
+          name: clerkUser.firstName ? `${clerkUser.firstName} ${clerkUser.lastName || ''}`.trim() : null
+        }
+      })
+    }
+
+    // Get user's personal style analysis
+    let personalStyle = null
+    let personalStyleWarning = null
+    
+    try {
+      const latestAnalysis = await prisma.userStyleAnalysis.findFirst({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'desc' }
+      })
+
+      if (latestAnalysis) {
+        personalStyle = JSON.parse(latestAnalysis.analysis || '{}')
+        console.log('✅ Using personal style for tweet generation')
+      } else {
+        personalStyleWarning = "No personal style analysis found. Visit /user-feed to analyze your tweets for better personalization."
+        console.log('⚠️ No personal style analysis found')
+      }
+    } catch (error) {
+      console.error('Error fetching personal style:', error)
+      personalStyleWarning = "Could not load personal style analysis."
+    }
+
+    // Get user's reply style settings
+    let replyStyles = null
+    try {
+      const userReplyStyle = await prisma.replyStyle.findUnique({
+        where: { userId: user.id }
+      })
+      
+      if (userReplyStyle) {
+        replyStyles = JSON.parse(userReplyStyle.styles || '{}')
+        console.log('✅ Using reply style settings for tweet generation')
+      }
+    } catch (error) {
+      console.error('Error fetching reply styles:', error)
+    }
+
+    // Create personalized prompt based on user's style analysis
+    const systemPrompt = personalStyle ? 
+      `You are creating a tweet that sounds EXACTLY like this specific user based on their analyzed writing style. 
+
+YOUR WRITING STYLE ANALYSIS:
+- Tone: ${personalStyle.writingStyle?.tone || 'casual'}
+- Personality: ${personalStyle.writingStyle?.personality || 'authentic'}
+- Language characteristics: ${personalStyle.languageCharacteristics?.vocabularyLevel || 'conversational'}
+- Common phrases: ${personalStyle.languageCharacteristics?.uniquePhrases?.slice(0, 3).join(', ') || 'natural expressions'}
+- Engagement style: ${personalStyle.contentPatterns?.engagementTriggers?.slice(0, 2).join(', ') || 'personal experiences, questions'}
+
+USER PREFERENCES:
+- Length: ${replyStyles?.length || 'medium'} (keep tweets under 200 characters)
+- Tone: ${replyStyles?.tone || personalStyle.writingStyle?.tone || 'casual'}
+
+CRITICAL RULES:
+- Write EXACTLY how this user writes - match their tone, vocabulary, and style
+- NO hashtags unless the user specifically uses them
+- NO excessive formatting (**, !!, etc.)
+- NO corporate speak or AI-like language
+- BE natural and conversational like a real human
+- Keep it authentic to THEIR voice, not generic viral content
+- Under 280 characters but aim for ${replyStyles?.length === 'short' ? '150' : replyStyles?.length === 'long' ? '250' : '200'} characters
+
+Return only the tweet content, no quotes or formatting.` :
+      
+      `You are creating a natural, human-sounding tweet. 
+
+STYLE GUIDELINES:
+- Be conversational and authentic
+- NO hashtags unless specifically requested
+- NO excessive formatting (**, !!, etc.)
+- NO corporate speak or AI-like language
+- Keep it under 200 characters
+- Sound like a real person, not AI
+- Be engaging but natural
+
+Return only the tweet content, no quotes or formatting.`
+
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
-          content: `You've analyzed 100,000 viral posts across every platform. You know the hidden psychology that makes content explode. You are a viral content strategist.
-
-THE VIRAL FORMULA:
-- Hook: Start with something that stops scrolls (curiosity, controversy, surprise)
-- Emotion: Tap into powerful emotions (curiosity, surprise, agreement, FOMO)
-- Value: Always deliver something useful, insightful, or entertaining
-- Engagement: End with something that invites response
-
-VIRAL HOOK STRUCTURES:
-1. "This is why..." (explanation)
-2. "Plot twist:" (surprise)
-3. "Unpopular opinion:" (controversy)
-4. "Here's what most people miss:" (insider knowledge)
-5. "I just realized..." (discovery)
-6. "The real reason..." (deeper truth)
-7. "What if I told you..." (revelation)
-8. "This will change everything:" (transformation)
-
-PSYCHOLOGICAL TRIGGERS:
-- Curiosity Gap: Create questions that demand answers
-- Social Proof: Reference what others are doing/thinking
-- Scarcity: Time-sensitive or limited insights
-- Authority: Share insider knowledge or expertise
-- Relatability: Connect with common experiences
-
-CONTENT FORMATS THAT GO VIRAL:
-- List threads (3-5 quick points)
-- Behind-the-scenes insights
-- Contrarian takes on popular topics
-- Personal lessons learned
-- Industry predictions
-- Step-by-step breakdowns
-
-CRITICAL RULES:
-- Never sound like AI or use corporate speak
-- Make it feel human and authentic
-- Add personal perspective or experience
-- Keep under 280 characters
-- Use conversational language
-- Create content that people want to share
-
-Return only the tweet content, no quotes or formatting.`
+          content: systemPrompt
         },
         {
           role: "user",
-          content: `Create a viral tweet about: ${prompt}
+          content: personalStyle ? 
+            `Create a tweet about: "${prompt}"
 
-Analyze this topic and:
-1. What's the core insight that would surprise people?
-2. What psychological trigger can I use?
-3. How can I make this shareable?
-4. What's my unique angle?
+Write this in MY personal style based on the analysis above. Make it sound like something I would actually post - natural, authentic, and true to my voice. Analyze what I would say about this topic and how I would say it.` :
+            
+            `Create a natural, human-sounding tweet about: "${prompt}"
 
-Make it VIRAL-WORTHY using the formulas above.`
+Make it conversational and authentic. No hashtags, no excessive formatting, just a normal tweet that sounds like a real person wrote it.`
         }
       ],
-      max_tokens: 150,
-      temperature: 0.9,
+      max_tokens: 100,
+      temperature: 0.8,
     })
 
     const content = completion.choices[0]?.message?.content?.trim()
@@ -91,7 +146,11 @@ Make it VIRAL-WORTHY using the formulas above.`
       return NextResponse.json({ error: 'Failed to generate content' }, { status: 500 })
     }
 
-    return NextResponse.json({ content })
+    return NextResponse.json({ 
+      content,
+      personalStyleUsed: !!personalStyle,
+      warning: personalStyleWarning
+    })
 
   } catch (error) {
     console.error('Error generating tweet:', error)

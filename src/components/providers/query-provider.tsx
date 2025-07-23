@@ -10,34 +10,45 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Aggressive caching for better performance
-            staleTime: 5 * 60 * 1000, // 5 minutes - data stays fresh
-            gcTime: 10 * 60 * 1000, // 10 minutes - keep in cache
+            // Optimized caching for mobile performance
+            staleTime: 2 * 60 * 1000, // 2 minutes - fresher data for mobile
+            gcTime: 15 * 60 * 1000, // 15 minutes - longer cache retention
             
-            // Smart refetching strategy
-            refetchOnWindowFocus: false, // Don't refetch on focus
-            refetchOnReconnect: 'always', // Do refetch when reconnecting
-            refetchOnMount: true, // Refetch when component mounts
+            // Mobile-optimized refetching strategy
+            refetchOnWindowFocus: false, // Avoid unnecessary refetches
+            refetchOnReconnect: true, // Important for mobile network switches
+            refetchOnMount: false, // Use cached data first for speed
+            refetchInterval: false, // Disable background refetching for performance
             
-            // Retry configuration
+            // Optimized retry configuration for mobile
             retry: (failureCount, error: any) => {
               // Don't retry 4xx errors (client errors)
               if (error?.status >= 400 && error?.status < 500) return false
-              // Retry up to 3 times for other errors
-              return failureCount < 3
+              // Reduced retries for mobile performance
+              return failureCount < 2
             },
-            retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+            retryDelay: (attemptIndex) => Math.min(500 * 2 ** attemptIndex, 5000),
             
-            // Network mode
-            networkMode: 'always',
+            // Network mode optimized for mobile
+            networkMode: 'online',
+            
+            // Mobile performance optimizations
+            suspense: false,
+            useErrorBoundary: false,
+            
+            // Prefetch optimization
+            placeholderData: (previousData) => previousData, // Keep previous data while loading
           },
           mutations: {
-            // Retry failed mutations
+            // Faster mutations for mobile
             retry: 1,
-            retryDelay: 1000,
+            retryDelay: 500,
             
             // Network mode for mutations
-            networkMode: 'always',
+            networkMode: 'online',
+            
+            // Mutation optimizations
+            useErrorBoundary: false,
           },
         },
       })

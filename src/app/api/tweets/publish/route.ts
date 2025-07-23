@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { xApiClient } from '@/lib/x-api'
+import { XTokenManager } from '@/lib/x-token-manager'
 
 export async function POST(request: NextRequest) {
   try {
@@ -74,22 +75,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Decrypt the access token (it's base64 encoded in storage)
-    let userAccessToken: string
-    try {
-      userAccessToken = Buffer.from(xAccount.accessToken, 'base64').toString('utf-8')
-      console.log('🔑 Decrypted access token:', userAccessToken.substring(0, 20) + '...')
-      console.log('🔑 Token appears to be:', userAccessToken.startsWith('AAAA') ? 'Bearer Token (App-Only)' : 'User Access Token')
-    } catch (decryptError) {
-      console.error('❌ Failed to decrypt access token:', decryptError)
-      return NextResponse.json({ 
-        error: 'Invalid access token', 
-        message: 'Please reconnect your X account',
-        needsReconnection: true 
-      }, { status: 400 })
-    }
-
-    // Actually publish to X (Twitter) using the API
+    // Publish tweets with automatic token refresh handling
     const publishedTweets = []
     let lastTweetId: string | undefined = undefined
     let publishedContent: any = null
@@ -98,90 +84,96 @@ export async function POST(request: NextRequest) {
       for (let i = 0; i < tweets.length; i++) {
         const tweet = tweets[i]
         
-        console.log(`📤 Publishing tweet ${i + 1}/${tweets.length} to X...`)
+        console.log(`📤 Publishing tweet ${i + 1}/${tweets.length} to X for @${xAccount.username}...`)
         
-        // Handle media uploads if present
-        let mediaIds: string[] = []
-        if (tweet.images && tweet.images.length > 0) {
-          console.log(`📸 Uploading ${tweet.images.length} images for tweet ${i + 1}...`)
-          
-          for (const [imageIndex, image] of tweet.images.entries()) {
-            try {
-              let buffer: Buffer
-              let mimeType: string
+        // Use token manager to handle all X API operations
+        const publishedTweet = await XTokenManager.withTokenRefresh(
+          xAccount.id,
+          async (accessToken: string) => {
+            // Handle media uploads if present
+            let mediaIds: string[] = []
+            if (tweet.images && tweet.images.length > 0) {
+              console.log(`📸 Uploading ${tweet.images.length} images for tweet ${i + 1}...`)
               
-              console.log(`🖼️ Processing image ${imageIndex + 1}:`, {
-                isFile: image instanceof File,
-                type: image.type || 'unknown',
-                size: image.size || 'unknown'
-              })
-              
-              if (image instanceof File) {
-                // Convert File to Buffer
-                const arrayBuffer = await image.arrayBuffer()
-                buffer = Buffer.from(arrayBuffer)
-                mimeType = image.type
-                
-                console.log(`✅ Converted File to Buffer: ${buffer.length} bytes, type: ${mimeType}`)
-              } else if (typeof image === 'string') {
-                // Handle base64 encoded images (fallback)
-                const base64Data = image.replace(/^data:image\/\w+;base64,/, '')
-                buffer = Buffer.from(base64Data, 'base64')
-                mimeType = 'image/jpeg' // Default fallback
-                
-                console.log(`✅ Converted base64 to Buffer: ${buffer.length} bytes`)
-              } else {
-                console.error(`❌ Unknown image format:`, typeof image)
-                continue
+              for (const [imageIndex, image] of tweet.images.entries()) {
+                try {
+                  let buffer: Buffer
+                  let mimeType: string
+                  
+                  console.log(`🖼️ Processing image ${imageIndex + 1}:`, {
+                    isFile: image instanceof File,
+                    type: image.type || 'unknown',
+                    size: image.size || 'unknown'
+                  })
+                  
+                  if (image instanceof File) {
+                    // Convert File to Buffer
+                    const arrayBuffer = await image.arrayBuffer()
+                    buffer = Buffer.from(arrayBuffer)
+                    mimeType = image.type
+                    
+                    console.log(`✅ Converted File to Buffer: ${buffer.length} bytes, type: ${mimeType}`)
+                  } else if (typeof image === 'string') {
+                    // Handle base64 encoded images (fallback)
+                    const base64Data = image.replace(/^data:image\/\w+;base64,/, '')
+                    buffer = Buffer.from(base64Data, 'base64')
+                    mimeType = 'image/jpeg' // Default fallback
+                    
+                    console.log(`✅ Converted base64 to Buffer: ${buffer.length} bytes`)
+                  } else {
+                    console.error(`❌ Unknown image format:`, typeof image)
+                    continue
+                  }
+                  
+                  // Validate image size (X has limits)
+                  if (buffer.length > 5 * 1024 * 1024) { // 5MB limit
+                    console.error(`❌ Image too large: ${buffer.length} bytes (max 5MB)`)
+                    continue
+                  }
+                  
+                  // Upload media to X
+                  console.log(`🔄 Uploading to X API...`)
+                  const mediaResponse = await xApiClient.uploadMedia(
+                    buffer,
+                    mimeType,
+                    accessToken // Use fresh token from token manager
+                  )
+                  
+                  mediaIds.push(mediaResponse.media_id_string)
+                  console.log(`✅ Successfully uploaded media: ${mediaResponse.media_id_string}`)
+                } catch (uploadError) {
+                  console.error(`❌ Failed to upload image ${imageIndex + 1}:`, {
+                    error: uploadError instanceof Error ? uploadError.message : uploadError,
+                    stack: uploadError instanceof Error ? uploadError.stack : undefined
+                  })
+                  // Continue without this image rather than failing the entire tweet
+                }
               }
               
-              // Validate image size (X has limits)
-              if (buffer.length > 5 * 1024 * 1024) { // 5MB limit
-                console.error(`❌ Image too large: ${buffer.length} bytes (max 5MB)`)
-                continue
-              }
-              
-              // Upload media to X
-              console.log(`🔄 Uploading to X API...`)
-              const mediaResponse = await xApiClient.uploadMedia(
-                buffer,
-                mimeType,
-                userAccessToken
-              )
-              
-              mediaIds.push(mediaResponse.media_id_string)
-              console.log(`✅ Successfully uploaded media: ${mediaResponse.media_id_string}`)
-            } catch (uploadError) {
-              console.error(`❌ Failed to upload image ${imageIndex + 1}:`, {
-                error: uploadError instanceof Error ? uploadError.message : uploadError,
-                stack: uploadError instanceof Error ? uploadError.stack : undefined
-              })
-              // Continue without this image rather than failing the entire tweet
+              console.log(`📊 Media upload summary: ${mediaIds.length}/${tweet.images.length} images uploaded successfully`)
+            }
+            
+            // Post to X API
+            const response = await xApiClient.postTweet(tweet.content, {
+              replyToTweetId: lastTweetId, // For threads, reply to previous tweet
+              accessToken: accessToken, // Use fresh token from token manager
+              mediaIds: mediaIds.length > 0 ? mediaIds : undefined
+            })
+            
+            return {
+              id: response.data.id,
+              tweetId: response.data.id,
+              content: response.data.text,
+              publishedAt: new Date(),
+              mediaCount: mediaIds.length
             }
           }
-          
-          console.log(`📊 Media upload summary: ${mediaIds.length}/${tweet.images.length} images uploaded successfully`)
-        }
-        
-        // Post to X API
-        const response = await xApiClient.postTweet(tweet.content, {
-          replyToTweetId: lastTweetId, // For threads, reply to previous tweet
-          accessToken: userAccessToken, // Use the decoded token
-          mediaIds: mediaIds.length > 0 ? mediaIds : undefined
-        })
-        
-        const publishedTweet = {
-          id: response.data.id,
-          tweetId: response.data.id,
-          content: response.data.text,
-          publishedAt: new Date(),
-          mediaCount: mediaIds.length
-        }
+        )
         
         publishedTweets.push(publishedTweet)
-        lastTweetId = response.data.id // For threading
+        lastTweetId = publishedTweet.id // For threading
         
-        console.log(`✅ Published tweet ${i + 1}: ${response.data.id} ${mediaIds.length > 0 ? `with ${mediaIds.length} images` : ''}`)
+        console.log(`✅ Published tweet ${i + 1}: ${publishedTweet.id} ${publishedTweet.mediaCount > 0 ? `with ${publishedTweet.mediaCount} images` : ''}`)
         
         // Add delay between tweets in a thread (2 seconds)
         if (i < tweets.length - 1) {

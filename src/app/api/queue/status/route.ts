@@ -37,7 +37,14 @@ export async function GET() {
     // Get recent activity
     const recentReplies = await prisma.replyQueue.findMany({
       where: { userId: user.id },
-      include: {
+      select: {
+        id: true,
+        replyContent: true,
+        status: true,
+        scheduledFor: true,
+        sentAt: true,
+        createdAt: true,
+        errorMessage: true,
         tweet: {
           include: {
             targetUser: {

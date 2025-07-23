@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { trackApiRequest, performanceMonitor } from '@/lib/performance-monitor'
 
 // Query Keys
 export const queryKeys = {
@@ -39,44 +40,83 @@ export const queryKeys = {
   xOAuthStatus: ['xOAuthStatus'] as const,
 } as const
 
-// API Helper Functions
+// Optimized API Helper Functions with performance tracking
 const apiRequest = async (url: string, options?: RequestInit) => {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  })
+  return trackApiRequest(async () => {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10s timeout
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Request failed' }))
-    throw new Error(errorData.error || `HTTP ${response.status}`)
-  }
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options?.headers,
+        },
+      })
 
-  return response.json()
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Request failed' }))
+        const error = new Error(errorData.error || `HTTP ${response.status}`)
+        ;(error as any).status = response.status
+        throw error
+      }
+
+      return response.json()
+    } catch (error) {
+      clearTimeout(timeoutId)
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout - please check your connection')
+      }
+      throw error
+    }
+  }, url.replace('/api/', ''))
 }
 
 const apiFormData = async (url: string, formData: FormData) => {
-  const response = await fetch(url, {
-    method: 'POST',
-    body: formData,
-  })
+  return trackApiRequest(async () => {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout for uploads
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Request failed' }))
-    throw new Error(errorData.error || `HTTP ${response.status}`)
-  }
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+      })
 
-  return response.json()
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Request failed' }))
+        const error = new Error(errorData.error || `HTTP ${response.status}`)
+        ;(error as any).status = response.status
+        throw error
+      }
+
+      return response.json()
+    } catch (error) {
+      clearTimeout(timeoutId)
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Upload timeout - please check your connection')
+      }
+      throw error
+    }
+  }, `${url.replace('/api/', '')}-upload`)
 }
 
-// User & Auth Hooks
+// User & Auth Hooks - Optimized for mobile
 export const useUser = () => {
   return useQuery({
     queryKey: queryKeys.user,
     queryFn: () => apiRequest('/api/auth/user'),
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 10 * 60 * 1000, // 10 minutes - user data rarely changes
+    gcTime: 30 * 60 * 1000, // 30 minutes cache
+    retry: 1, // Quick fail for auth issues
+    placeholderData: (previousData) => previousData,
   })
 }
 
@@ -84,7 +124,10 @@ export const useXAccounts = () => {
   return useQuery({
     queryKey: queryKeys.xAccounts,
     queryFn: () => apiRequest('/api/x-accounts'),
-    staleTime: 2 * 60 * 1000, // 2 minutes
+    staleTime: 5 * 60 * 1000, // 5 minutes - account status doesn't change often
+    gcTime: 15 * 60 * 1000,
+    retry: 1, // Quick fail for security issues
+    placeholderData: (previousData) => previousData,
   })
 }
 
@@ -92,16 +135,22 @@ export const useXOAuthStatus = () => {
   return useQuery({
     queryKey: queryKeys.xOAuthStatus,
     queryFn: () => apiRequest('/api/x-oauth/status'),
-    staleTime: 30 * 1000, // 30 seconds
+    staleTime: 2 * 60 * 1000, // 2 minutes - OAuth status is more stable
+    gcTime: 10 * 60 * 1000,
+    retry: 1,
+    placeholderData: (previousData) => previousData,
   })
 }
 
-// Target Hooks
+// Target Hooks - Optimized caching
 export const useTargets = () => {
   return useQuery({
     queryKey: queryKeys.targets,
     queryFn: () => apiRequest('/api/targets'),
-    staleTime: 2 * 60 * 1000, // 2 minutes
+    staleTime: 5 * 60 * 1000, // 5 minutes - targets change infrequently
+    gcTime: 15 * 60 * 1000, // 15 minutes cache
+    placeholderData: (previousData) => previousData,
+    refetchOnMount: false, // Use cache first for speed
   })
 }
 
@@ -200,7 +249,7 @@ export const useDeleteTarget = () => {
   })
 }
 
-// Tweet Hooks
+// Tweet Hooks - Balance freshness with performance
 export const useTweets = (filters?: any) => {
   const searchParams = new URLSearchParams()
   if (filters) {
@@ -214,7 +263,11 @@ export const useTweets = (filters?: any) => {
   return useQuery({
     queryKey: queryKeys.tweets(filters),
     queryFn: () => apiRequest(`/api/tweets?${searchParams}`),
-    staleTime: 1 * 60 * 1000, // 1 minute
+    staleTime: 3 * 60 * 1000, // 3 minutes - balance freshness with performance
+    gcTime: 10 * 60 * 1000,
+    placeholderData: (previousData) => previousData,
+    enabled: true, // Always enabled but use cache first
+    refetchOnMount: false,
   })
 }
 

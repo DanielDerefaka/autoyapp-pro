@@ -1,6 +1,6 @@
-import { auth } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { apiAuth } from '@/lib/auth-utils'
 import { z } from 'zod'
 
 const createTargetSchema = z.object({
@@ -11,11 +11,11 @@ const createTargetSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await auth()
-    const clerkId = authResult?.userId
+    const { userId: clerkId, error } = await apiAuth(request)
 
     if (!clerkId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      console.log('❌ Auth failed in GET /api/targets:', error)
+      return NextResponse.json({ error: error || 'Unauthorized' }, { status: 401 })
     }
 
     const user = await prisma.user.findUnique({
@@ -85,11 +85,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const authResult = await auth()
-    const clerkId = authResult?.userId
+    const { userId: clerkId, error } = await apiAuth(request)
 
     if (!clerkId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      console.log('❌ Auth failed in POST /api/targets:', error)
+      return NextResponse.json({ error: error || 'Unauthorized' }, { status: 401 })
     }
 
     const user = await prisma.user.findUnique({

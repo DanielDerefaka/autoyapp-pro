@@ -9,7 +9,8 @@ const openai = new OpenAI({
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId: clerkId } = await auth()
+    const { userId } = await auth()
+    const clerkId = userId
 
     if (!clerkId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -69,6 +70,7 @@ export async function POST(request: NextRequest) {
         tweetContent,
         authorUsername: targetUsername,
         userStyles,
+        userId: user.id, // Pass user ID to access personal style analysis
         context: {
           sentiment: context?.sentiment || 0,
         },

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { xApiClient } from '@/lib/x-api'
+import { XTokenManager } from '@/lib/x-token-manager'
 
 export async function POST(request: NextRequest) {
   try {
@@ -64,21 +65,23 @@ export async function POST(request: NextRequest) {
         const publishedTweets = []
         let lastTweetId: string | undefined = undefined
 
-        // Decrypt the access token
-        const userAccessToken = Buffer.from(content.xAccount.accessToken, 'base64').toString('utf-8')
-
-        // Publish each tweet in the content
+        // Publish each tweet in the content with automatic token refresh
         for (let i = 0; i < tweets.length; i++) {
           const tweet = tweets[i]
           
-          console.log(`📤 Publishing tweet ${i + 1}/${tweets.length} for user ${content.user.email}`)
+          console.log(`📤 Publishing tweet ${i + 1}/${tweets.length} for @${content.xAccount.username}`)
           
           try {
-            // Post to X API
-            const response = await xApiClient.postTweet(tweet.content, {
-              replyToTweetId: lastTweetId, // For threads
-              accessToken: userAccessToken // Use decoded token
-            })
+            // Post to X API with automatic token refresh handling
+            const response = await XTokenManager.withTokenRefresh(
+              content.xAccount.id,
+              async (accessToken: string) => {
+                return await xApiClient.postTweet(tweet.content, {
+                  replyToTweetId: lastTweetId, // For threads
+                  accessToken: accessToken
+                })
+              }
+            )
             
             publishedTweets.push({
               id: response.data.id,

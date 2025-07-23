@@ -31,6 +31,8 @@ model User {
   replyStyle   ReplyStyle?
   autopilotSettings AutopilotSettings?
   scheduledContent ScheduledContent[]
+  userTweets UserTweet[]
+  styleAnalyses UserStyleAnalysis[]
 
   @@map("users")
 }
@@ -255,4 +257,31 @@ model ScheduledContent {
   xAccount XAccount @relation(fields: [xAccountId], references: [id], onDelete: Cascade)
 
   @@map("scheduled_content")
+}
+
+model UserTweet {
+  id         String   @id @default(cuid())
+  userId     String
+  content    String
+  originalId String   // Original tweet ID or manual identifier
+  source     String   // 'manual', 'rapidapi', etc.
+  metadata   String   @default("{}") // JSON metadata (likes, retweets, etc.)
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_tweets")
+}
+
+model UserStyleAnalysis {
+  id         String   @id @default(cuid())
+  userId     String
+  analysis   String   // JSON containing the style analysis
+  confidence Float    @default(0.8)
+  tweetCount Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_style_analyses")
 }

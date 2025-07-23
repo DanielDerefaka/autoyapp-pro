@@ -1,5 +1,6 @@
-import { auth } from '@clerk/nextjs/server'
+import { auth, currentUser } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import OpenAI from 'openai'
 
 const openai = new OpenAI({
@@ -25,19 +26,18 @@ export async function POST(request: NextRequest) {
       messages: [
         {
           role: "system",
-          content: `You are a professional social media content creator. Create engaging Twitter threads that:
-          - Each tweet is under 280 characters
-          - Create 3-7 tweets in a thread format
-          - Include relevant emojis where appropriate
-          - Are engaging and tell a complete story
-          - Have a strong opening hook
-          - End with a call-to-action or question
-          - Use numbered format (1/n, 2/n, etc.) for tweet numbering
-          - Are optimized for engagement and retweets
-          - Maintain consistent tone throughout
+          content: `Create a Twitter thread (3-5 tweets) that sounds natural and human:
           
-          Return the response as a JSON array of tweet strings, with each tweet being a separate element.
-          Example format: ["1/5 Here's why AI will change everything... 🧵", "2/5 First, let's look at the current landscape...", ...]`
+          - Each tweet under 280 characters
+          - NO excessive formatting (**, !!, etc.)
+          - NO hashtags unless specifically requested
+          - NO corporate speak or AI-like language
+          - Sound like a real person sharing insights
+          - Create a flowing narrative across tweets
+          - Be conversational and authentic
+          
+          Return as a JSON array of tweet strings.
+          Example: ["First insight about the topic...", "Here's what I learned...", "The key thing is..."]`
         },
         {
           role: "user",

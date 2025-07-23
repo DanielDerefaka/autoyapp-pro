@@ -1,14 +1,15 @@
-import { auth } from '@clerk/nextjs/server'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { apiAuth } from '@/lib/auth-utils'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { userId: clerkId } = await auth()
+    const { userId: clerkId, error } = await apiAuth(request)
     console.log('🔍 X OAuth Status - Clerk ID:', clerkId)
 
     if (!clerkId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      console.log('❌ Auth failed in GET /api/x-oauth/status:', error)
+      return NextResponse.json({ error: error || 'Unauthorized' }, { status: 401 })
     }
 
     // Find user

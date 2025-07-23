@@ -69,6 +69,43 @@ export default function QueueManagerPage() {
     return `${diffDays}d ago`
   }
 
+  const formatScheduledTime = (dateString: string) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = date.getTime() - now.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMins / 60)
+    const diffDays = Math.floor(diffHours / 24)
+
+    // If it's in the past, show "Overdue"
+    if (diffMs < 0) {
+      return 'Overdue'
+    }
+
+    // If it's within the next hour, show minutes
+    if (diffMins < 60) {
+      return `in ${diffMins}m`
+    }
+
+    // If it's today, show time
+    if (diffHours < 24) {
+      return `in ${diffHours}h ${diffMins % 60}m`
+    }
+
+    // If it's this week, show day and time
+    if (diffDays < 7) {
+      return `in ${diffDays}d ${diffHours % 24}h`
+    }
+
+    // For further dates, show the actual date
+    return date.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -197,6 +234,78 @@ export default function QueueManagerPage() {
         </Card>
       </div>
 
+      {/* Upcoming Scheduled Posts */}
+      <Card className="border-border bg-card glass">
+        <CardHeader>
+          <CardTitle className="text-foreground flex items-center">
+            <div className="p-2 bg-chart-3/10 rounded-lg mr-3">
+              <Clock className="h-5 w-5 text-chart-3" />
+            </div>
+            Upcoming Scheduled Posts
+          </CardTitle>
+          <CardDescription className="text-muted-foreground">
+            Replies waiting to be posted - sorted by posting time
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {queueStatus?.recentActivity && queueStatus.recentActivity.filter(activity => activity.status === 'pending').length > 0 ? (
+            <div className="space-y-4">
+              {queueStatus.recentActivity
+                .filter(activity => activity.status === 'pending')
+                .sort((a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime())
+                .slice(0, 5)
+                .map((activity) => (
+                  <div key={activity.id} className="flex items-center justify-between p-4 border border-chart-3/20 rounded-xl bg-chart-3/5 hover:bg-chart-3/10 transition-all duration-200">
+                    <div className="flex items-center space-x-4 flex-1">
+                      <div className="p-2 bg-chart-3/20 rounded-lg">
+                        <Clock className="h-4 w-4 text-chart-3" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <p className="font-medium text-foreground truncate">
+                            Reply to @{activity.tweet.targetUser.targetUsername}
+                          </p>
+                        </div>
+                        <p className="text-sm text-muted-foreground truncate mb-2">
+                          &quot;{activity.replyContent.slice(0, 80)}...&quot;
+                        </p>
+                        <div className="flex items-center space-x-1 text-chart-3 font-medium text-sm">
+                          <Clock className="h-3 w-3" />
+                          <span>Posts {formatScheduledTime(activity.scheduledFor)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-medium text-chart-3">
+                        {new Date(activity.scheduledFor).toLocaleTimeString('en-US', { 
+                          hour: '2-digit', 
+                          minute: '2-digit' 
+                        })}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(activity.scheduledFor).toLocaleDateString('en-US', { 
+                          month: 'short', 
+                          day: 'numeric' 
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <div className="p-4 bg-muted/20 rounded-full w-20 h-20 mx-auto mb-6 flex items-center justify-center">
+                <Clock className="h-10 w-10 text-muted-foreground" />
+              </div>
+              <h3 className="text-xl font-semibold text-foreground mb-3">No scheduled posts</h3>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                Add target users and generate replies to see upcoming scheduled posts here.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Recent Activity */}
       <Card className="border-border bg-card glass">
         <CardHeader>
@@ -232,9 +341,22 @@ export default function QueueManagerPage() {
                       <p className="text-sm text-muted-foreground truncate mb-1">
                         &quot;{activity.replyContent.slice(0, 100)}...&quot;
                       </p>
-                      <p className="text-xs text-muted-foreground/70">
-                        {formatRelativeTime(activity.createdAt)}
-                      </p>
+                      <div className="flex items-center space-x-3 text-xs">
+                        <span className="text-muted-foreground/70">
+                          Created {formatRelativeTime(activity.createdAt)}
+                        </span>
+                        {activity.status === 'pending' && (
+                          <span className="flex items-center space-x-1 text-chart-3 font-medium">
+                            <Clock className="h-3 w-3" />
+                            <span>Posts {formatScheduledTime(activity.scheduledFor)}</span>
+                          </span>
+                        )}
+                        {activity.status === 'sent' && activity.sentAt && (
+                          <span className="text-emerald-600 font-medium">
+                            Sent {formatRelativeTime(activity.sentAt)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   

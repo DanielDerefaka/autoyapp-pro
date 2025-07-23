@@ -1,13 +1,35 @@
 import { auth, currentUser } from '@clerk/nextjs/server'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { apiAuth } from '@/lib/auth-utils'
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    const { userId: clerkId } = await auth()
-    const clerkUser = await currentUser()
+    // Try mobile auth first, then fall back to web auth
+    let clerkId: string | null = null
+    let clerkUser: any = null
+    
+    const mobileAuth = await apiAuth(request)
+    if (mobileAuth.userId) {
+      clerkId = mobileAuth.userId
+      // For mobile, we'll need to get user info from Clerk API using the user ID
+      try {
+        const { clerkClient } = await import('@clerk/nextjs/server')
+        clerkUser = await clerkClient().users.getUser(clerkId)
+        console.log('🔐 Using mobile auth for user creation')
+      } catch (error) {
+        console.error('Failed to get mobile user from Clerk:', error)
+      }
+    } else {
+      // Fall back to web auth
+      const webAuth = await auth()
+      clerkId = webAuth.userId
+      clerkUser = await currentUser()
+      console.log('🔐 Using web auth for user creation')
+    }
 
-    if (!clerkId || !clerkUser) {
+    if (!clerkId) {
+      console.log('❌ No authentication found in ensure-user')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -24,11 +46,17 @@ export async function POST() {
       console.log('🔍 User not found, creating new user...')
       
       // Create new user
+      const email = clerkUser?.emailAddresses?.[0]?.emailAddress || 
+                   clerkUser?.primaryEmailAddress?.emailAddress || ''
+      const firstName = clerkUser?.firstName || ''
+      const lastName = clerkUser?.lastName || ''
+      const fullName = `${firstName} ${lastName}`.trim() || null
+
       user = await prisma.user.create({
         data: {
           clerkId,
-          email: clerkUser.emailAddresses[0]?.emailAddress || '',
-          name: `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() || null,
+          email,
+          name: fullName,
           subscriptionTier: 'free',
         },
         include: { xAccounts: true }

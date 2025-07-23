@@ -9,8 +9,8 @@
   },
   "crons": [
     {
-      "path": "/api/cron/process-scheduled-tweets",
-      "schedule": "0 9 * * *"
+      "path": "/api/cron/unified-processor",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
