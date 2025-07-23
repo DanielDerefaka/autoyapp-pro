@@ -16,7 +16,8 @@ import {
   PenTool,
   Calendar,
   Sparkles,
-  User
+  User,
+  Database
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -29,6 +30,7 @@ const navigation = [
   { name: 'Feeds', href: '/feeds', icon: MessageSquare },
   { name: 'Autopilot', href: '/autopilot', icon: Bot },
   { name: 'Target Users', href: '/target-users', icon: Users },
+  { name: 'Reply Dump', href: '/reply-dump', icon: Database },
   { name: 'My Analysis', href: '/user-feed', icon: User },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Queue Manager', href: '/queue-manager', icon: Clock },

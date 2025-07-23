@@ -4,6 +4,12 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
 const updateTargetSchema = z.object({
+  targetUsername: z.string()
+    .min(1, 'Username is required')
+    .max(15, 'Username must be 15 characters or less')
+    .regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores')
+    .transform(val => val.replace('@', ''))
+    .optional(),
   isActive: z.boolean().optional(),
   notes: z.string().optional(),
 })

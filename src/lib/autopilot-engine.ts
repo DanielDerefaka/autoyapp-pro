@@ -168,7 +168,10 @@ export class AutopilotEngine {
           xAccounts: {
             where: { isActive: true }
           },
-          replyStyle: true
+          replyStyle: true,
+          replyDumps: {
+            where: { isActive: true }
+          }
         }
       })
     } catch (error: any) {
@@ -457,46 +460,53 @@ export class AutopilotEngine {
   }
 
   /**
-   * Generate AI reply for a tweet
+   * Generate AI reply for a tweet using the new auto-generate system
    */
   private async generateReply(tweet: TweetCandidate, user: any): Promise<string | null> {
     try {
-      // Get user's reply style if available
-      let userStyles = null
-      if (user.replyStyle) {
-        try {
-          userStyles = JSON.parse(user.replyStyle.styles)
-        } catch (error) {
-          console.error('Error parsing user reply styles:', error)
-        }
+      // Find the corresponding tweet in our database
+      const dbTweet = await prisma.tweet.findUnique({
+        where: { tweetId: tweet.tweetId }
+      })
+
+      if (!dbTweet) {
+        console.error(`Tweet ${tweet.tweetId} not found in database`)
+        return null
       }
 
-      // Use the same reply generation logic as manual replies
-      const response = await fetch(`${process.env.APP_URL || 'http://localhost:3000'}/api/replies/generate`, {
+      // Use the new auto-generate API that includes reply dump matching
+      const response = await fetch(`${process.env.APP_URL || 'http://localhost:3000'}/api/replies/auto-generate`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${process.env.INTERNAL_API_TOKEN || 'internal'}` // For internal calls
         },
         body: JSON.stringify({
-          tweetId: tweet.tweetId,
-          tweetContent: tweet.content,
-          targetUsername: tweet.authorUsername,
-          context: {
-            authorUsername: tweet.authorUsername,
-            sentiment: tweet.sentimentScore,
-            autopilot: true
-          }
+          tweetId: dbTweet.id, // Use internal tweet ID
+          useReplyDumps: true,
+          forceGenerate: true // Skip some ToS checks since we're already in autopilot mode
         })
       })
 
       if (!response.ok) {
-        console.error(`Failed to generate reply: ${response.status}`)
+        const errorData = await response.json()
+        console.error(`Failed to auto-generate reply: ${response.status}`, errorData)
         return null
       }
 
       const data = await response.json()
-      return data.reply
+      
+      // The auto-generate API already creates a queue entry, so we need to handle this differently
+      if (data.success && data.reply) {
+        // Delete the queue entry created by auto-generate since we'll create our own with autopilot settings
+        await prisma.replyQueue.delete({
+          where: { id: data.reply.id }
+        })
+        
+        return data.reply.content
+      }
+
+      return null
 
     } catch (error) {
       console.error('Error generating reply:', error)

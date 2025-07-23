@@ -181,7 +181,23 @@ export const useAddTarget = () => {
           createdAt: new Date().toISOString(),
           _count: { tweets: 0, analytics: 0 },
         }
-        return old ? [...old, optimisticTarget] : [optimisticTarget]
+        
+        if (!old) {
+          return {
+            data: [optimisticTarget],
+            pagination: { limit: 50, offset: 0, totalCount: 1, hasMore: false, page: 1, totalPages: 1 }
+          }
+        }
+        
+        // old has structure { data: [...], pagination: {...} }
+        return {
+          ...old,
+          data: [...(old.data || []), optimisticTarget],
+          pagination: {
+            ...old.pagination,
+            totalCount: (old.pagination?.totalCount || 0) + 1
+          }
+        }
       })
       
       return { previousTargets }
@@ -232,7 +248,18 @@ export const useDeleteTarget = () => {
       
       // Optimistically remove the target
       queryClient.setQueryData(queryKeys.targets, (old: any) => {
-        return old ? old.filter((target: any) => target.id !== deletedId) : []
+        if (!old || !old.data) {
+          return old
+        }
+        
+        return {
+          ...old,
+          data: old.data.filter((target: any) => target.id !== deletedId),
+          pagination: {
+            ...old.pagination,
+            totalCount: Math.max((old.pagination?.totalCount || 0) - 1, 0)
+          }
+        }
       })
       
       return { previousTargets }
