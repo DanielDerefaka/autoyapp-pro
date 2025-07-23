@@ -6,6 +6,7 @@ import { ThemeProvider } from '@/components/providers/theme-provider';
 import { Toaster } from '@/components/ui/sonner';
 import { PerformanceDashboard } from '@/components/performance/performance-dashboard';
 import { SchedulerMonitor } from '@/components/scheduler/scheduler-monitor';
+import { BackgroundProcessor } from '@/components/background-processor';
 import "./globals.css";
 import localFont from "next/font/local";
 import { cn } from "@/lib/utils";
@@ -67,6 +68,7 @@ export default function RootLayout({
               <SchedulerProvider>
                 {children}
                 <Toaster />
+                <BackgroundProcessor />
                 <PerformanceDashboard />
                 <SchedulerMonitor />
               </SchedulerProvider>

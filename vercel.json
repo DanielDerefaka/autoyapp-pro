@@ -6,11 +6,5 @@
   },
   "env": {
     "NODE_ENV": "production"
-  },
-  "crons": [
-    {
-      "path": "/api/cron/unified-processor",
-      "schedule": "*/5 * * * *"
-    }
-  ]
+  }
 }
