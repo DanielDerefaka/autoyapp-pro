@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { xApiClient } from '@/lib/x-api'
 import { XTokenManager } from '@/lib/x-token-manager'
 
-export async function POST(request: NextRequest) {
+// Handle both GET and POST requests for cron services
+async function handleRequest(request: NextRequest) {
   try {
     // Flexible authentication for various cron services
     const authHeader = request.headers.get('authorization')
@@ -280,4 +281,13 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+// Export both GET and POST handlers for maximum compatibility
+export async function GET(request: NextRequest) {
+  return handleRequest(request)
+}
+
+export async function POST(request: NextRequest) {
+  return handleRequest(request)
 }
