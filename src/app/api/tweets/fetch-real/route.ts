@@ -108,6 +108,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      
       // Update target user's last scraped time and engagement score
       await prisma.targetUser.update({
         where: { id: targetUser.id },
