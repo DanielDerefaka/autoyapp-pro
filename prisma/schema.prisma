@@ -34,6 +34,11 @@ model User {
   userTweets UserTweet[]
   styleAnalyses UserStyleAnalysis[]
   replyDumps ReplyDump[]
+  socialNodes SocialNode[]
+  socialRelations SocialRelation[]
+  socialInteractions SocialInteraction[]
+  socialClusters SocialCluster[]
+  influencePaths InfluencePath[]
 
   @@map("users")
 }
@@ -322,4 +327,157 @@ model ProjectTweetCache {
 
   @@unique([projectHandle, tweetId])
   @@map("project_tweet_cache")
+}
+
+model ErrorLog {
+  id             String   @id @default(cuid())
+  userId         String?
+  userEmail      String?
+  errorType      String   // API_ERROR, CLIENT_ERROR, AUTH_ERROR, SYSTEM_ERROR, DATABASE_ERROR
+  errorMessage   String
+  errorStack     String?  @db.Text
+  endpoint       String?
+  method         String?
+  userAgent      String?
+  ipAddress      String?
+  requestBody    String?  @db.Text
+  responseStatus Int?
+  metadata       String   @default("{}") @db.Text // JSON for additional context
+  timestamp      DateTime @default(now())
+  resolved       Boolean  @default(false)
+  severity       String   @default("medium") // low, medium, high, critical
+
+  @@index([timestamp])
+  @@index([errorType])
+  @@index([severity])
+  @@index([resolved])
+  @@index([userId])
+  @@map("error_logs")
+}
+
+model SocialNode {
+  id              String   @id @default(cuid())
+  userId          String
+  username        String   @unique
+  displayName     String?
+  profileImageUrl String?
+  followerCount   Int      @default(0)
+  followingCount  Int      @default(0)
+  tweetCount      Int      @default(0)
+  isVerified      Boolean  @default(false)
+  accountAge      Int?     // days since account creation
+  bio             String?
+  location        String?
+  website         String?
+  lastSeen        DateTime?
+  influenceScore  Float    @default(0)
+  engagementRate  Float    @default(0)
+  topicAffinity   String   @default("{}") @db.Text // JSON of topics and scores
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outgoingRelations SocialRelation[]    @relation("FromUser")
+  incomingRelations SocialRelation[]    @relation("ToUser")
+  interactions      SocialInteraction[]
+  clusterMembers    SocialCluster[]
+
+  @@index([username])
+  @@index([influenceScore])
+  @@index([followerCount])
+  @@index([userId])
+  @@map("social_nodes")
+}
+
+model SocialRelation {
+  id               String   @id @default(cuid())
+  userId           String
+  fromUserId       String
+  toUserId         String
+  relationType     String   // follows, mentions, replies, quotes, retweets
+  strength         Float    @default(1.0) // relationship strength (0-1)
+  frequency        Int      @default(1) // how often they interact
+  reciprocal       Boolean  @default(false) // is the relationship mutual
+  lastInteraction  DateTime?
+  sentimentScore   Float    @default(0) // average sentiment of interactions
+  topicOverlap     Float    @default(0) // shared interest score
+  influenceFlow    Float    @default(0) // influence transfer score
+  metadata         String   @default("{}") @db.Text // JSON for additional data
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromUser SocialNode @relation("FromUser", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   SocialNode @relation("ToUser", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@unique([fromUserId, toUserId, relationType])
+  @@index([userId])
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([relationType])
+  @@index([strength])
+  @@map("social_relations")
+}
+
+model SocialInteraction {
+  id             String   @id @default(cuid())
+  userId         String
+  nodeId         String
+  interactionType String  // like, reply, retweet, quote, mention
+  tweetId        String?
+  content        String?
+  sentimentScore Float    @default(0)
+  engagementLevel String  @default("low") // low, medium, high
+  timestamp      DateTime
+  metadata       String   @default("{}") @db.Text
+  createdAt      DateTime @default(now())
+
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  node SocialNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([nodeId])
+  @@index([timestamp])
+  @@index([interactionType])
+  @@map("social_interactions")
+}
+
+model SocialCluster {
+  id          String   @id @default(cuid())
+  userId      String
+  nodeId      String
+  clusterId   String   // identifier for the cluster
+  clusterName String?  // friendly name for the cluster
+  centrality  Float    @default(0) // how central this node is in the cluster
+  topics      String   @default("[]") @db.Text // JSON array of cluster topics
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  node SocialNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([nodeId, clusterId])
+  @@index([userId])
+  @@index([clusterId])
+  @@map("social_clusters")
+}
+
+model InfluencePath {
+  id             String   @id @default(cuid())
+  userId         String
+  sourceNodeId   String
+  targetNodeId   String
+  pathLength     Int      // degrees of separation
+  influenceScore Float    // total influence along the path
+  pathNodes      String   @db.Text // JSON array of node IDs in the path
+  topics         String   @default("[]") @db.Text // relevant topics
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceNodeId, targetNodeId, userId])
+  @@index([userId])
+  @@index([influenceScore])
+  @@map("influence_paths")
 }

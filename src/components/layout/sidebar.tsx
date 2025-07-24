@@ -17,7 +17,9 @@ import {
   Calendar,
   Sparkles,
   User,
-  Database
+  Database,
+  AlertTriangle,
+  Network
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -32,9 +34,11 @@ const navigation = [
   { name: 'Target Users', href: '/target-users', icon: Users },
   { name: 'Reply Dump', href: '/reply-dump', icon: Database },
   { name: 'My Analysis', href: '/user-feed', icon: User },
+  { name: 'Social Graph', href: '/social-graph', icon: Network },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Queue Manager', href: '/queue-manager', icon: Clock },
   { name: 'Templates', href: '/templates', icon: FileText },
+  { name: 'Error Logs', href: '/error-logs', icon: AlertTriangle },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
 

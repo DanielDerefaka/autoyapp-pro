@@ -27,23 +27,39 @@ export class TweetScheduler {
         
         console.log('🌐 Scheduler calling:', `${baseUrl}/api/cron/process-scheduled-tweets`)
         
-        // Call our cron endpoint
-        const response = await fetch(`${baseUrl}/api/cron/process-scheduled-tweets`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${cronSecret}`,
-            'Content-Type': 'application/json',
-            'User-Agent': 'internal-cron-scheduler'
-          }
-        })
+        // Create an AbortController for timeout
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+        
+        try {
+          // Call our cron endpoint
+          const response = await fetch(`${baseUrl}/api/cron/process-scheduled-tweets`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${cronSecret}`,
+              'Content-Type': 'application/json',
+              'User-Agent': 'internal-cron-scheduler'
+            },
+            signal: controller.signal
+          })
 
-        if (response.ok) {
-          const result = await response.json()
-          if (result.processed > 0) {
-            console.log(`✅ Scheduler processed ${result.processed} scheduled tweets`)
+          clearTimeout(timeoutId)
+
+          if (response.ok) {
+            const result = await response.json()
+            if (result.processed > 0) {
+              console.log(`✅ Scheduler processed ${result.processed} scheduled tweets`)
+            }
+          } else {
+            console.error('❌ Scheduler request failed:', response.status)
           }
-        } else {
-          console.error('❌ Scheduler request failed:', response.status)
+        } catch (fetchError) {
+          clearTimeout(timeoutId)
+          if (fetchError.name === 'AbortError') {
+            console.error('❌ Scheduler request timeout after 30 seconds')
+          } else {
+            console.error('❌ Scheduler fetch error:', fetchError)
+          }
         }
       } catch (error) {
         console.error('❌ Scheduler error:', error)
@@ -80,21 +96,37 @@ export class TweetScheduler {
       
       console.log('🌐 Manual trigger calling:', `${baseUrl}/api/cron/process-scheduled-tweets`)
       
-      const response = await fetch(`${baseUrl}/api/cron/process-scheduled-tweets`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${cronSecret}`,
-          'Content-Type': 'application/json',
-          'User-Agent': 'manual-cron-trigger'
-        }
-      })
+      // Create an AbortController for timeout
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+      
+      try {
+        const response = await fetch(`${baseUrl}/api/cron/process-scheduled-tweets`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${cronSecret}`,
+            'Content-Type': 'application/json',
+            'User-Agent': 'manual-cron-trigger'
+          },
+          signal: controller.signal
+        })
 
-      if (response.ok) {
-        const result = await response.json()
-        console.log('✅ Manual trigger successful:', result)
-        return result
-      } else {
-        throw new Error(`Manual trigger failed: ${response.status}`)
+        clearTimeout(timeoutId)
+
+        if (response.ok) {
+          const result = await response.json()
+          console.log('✅ Manual trigger successful:', result)
+          return result
+        } else {
+          throw new Error(`Manual trigger failed: ${response.status}`)
+        }
+      } catch (fetchError) {
+        clearTimeout(timeoutId)
+        if (fetchError.name === 'AbortError') {
+          throw new Error('Manual trigger timeout after 30 seconds')
+        } else {
+          throw fetchError
+        }
       }
     } catch (error) {
       console.error('❌ Manual trigger error:', error)

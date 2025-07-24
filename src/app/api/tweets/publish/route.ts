@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { xApiClient } from '@/lib/x-api'
 import { XTokenManager } from '@/lib/x-token-manager'
+import { TwitterRateLimits } from '@/lib/rate-limiter'
 
 export async function POST(request: NextRequest) {
   try {
@@ -153,11 +154,12 @@ export async function POST(request: NextRequest) {
               console.log(`📊 Media upload summary: ${mediaIds.length}/${tweet.images.length} images uploaded successfully`)
             }
             
-            // Post to X API
+            // Post to X API (rate limiting is now handled inside xApiClient.postTweet)
             const response = await xApiClient.postTweet(tweet.content, {
               replyToTweetId: lastTweetId, // For threads, reply to previous tweet
               accessToken: accessToken, // Use fresh token from token manager
-              mediaIds: mediaIds.length > 0 ? mediaIds : undefined
+              mediaIds: mediaIds.length > 0 ? mediaIds : undefined,
+              userId: user.id // For rate limiting and error logging
             })
             
             return {

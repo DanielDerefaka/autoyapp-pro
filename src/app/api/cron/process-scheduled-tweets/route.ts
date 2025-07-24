@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { xApiClient } from '@/lib/x-api'
 import { XTokenManager } from '@/lib/x-token-manager'
+import { twitterCircuitBreakers } from '@/lib/circuit-breaker'
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
     console.log('🕐 Processing scheduled tweets...')
     const now = new Date()
 
-    // Get all scheduled content that should be published now
+    // Get a limited number of scheduled content to process (prevent timeout)
     const scheduledContent = await prisma.scheduledContent.findMany({
       where: {
         status: 'scheduled',
@@ -37,12 +38,17 @@ export async function POST(request: NextRequest) {
         }
       },
       include: {
-        user: true,
-        xAccount: true
+        user: {
+          select: { id: true, clerkId: true }
+        },
+        xAccount: {
+          select: { id: true, username: true, accessToken: true, refreshToken: true, isActive: true }
+        }
       },
       orderBy: {
         scheduledFor: 'asc'
-      }
+      },
+      take: 5 // Process max 5 items at a time to prevent timeout
     })
 
     console.log(`📋 Found ${scheduledContent.length} items to process`)
@@ -59,7 +65,10 @@ export async function POST(request: NextRequest) {
         // Mark as processing to prevent duplicate processing
         await prisma.scheduledContent.update({
           where: { id: content.id },
-          data: { status: 'processing' }
+          data: { 
+            status: 'processing',
+            updatedAt: new Date()
+          }
         })
 
         const publishedTweets = []
@@ -72,16 +81,19 @@ export async function POST(request: NextRequest) {
           console.log(`📤 Publishing tweet ${i + 1}/${tweets.length} for @${content.xAccount.username}`)
           
           try {
-            // Post to X API with automatic token refresh handling
-            const response = await XTokenManager.withTokenRefresh(
-              content.xAccount.id,
-              async (accessToken: string) => {
-                return await xApiClient.postTweet(tweet.content, {
-                  replyToTweetId: lastTweetId, // For threads
-                  accessToken: accessToken
-                })
-              }
-            )
+            // Post to X API with automatic token refresh handling and circuit breaker
+            const response = await twitterCircuitBreakers.postTweet.execute(async () => {
+              return await XTokenManager.withTokenRefresh(
+                content.xAccount.id,
+                async (accessToken: string) => {
+                  return await xApiClient.postTweet(tweet.content, {
+                    replyToTweetId: lastTweetId, // For threads
+                    accessToken: accessToken,
+                    userId: content.user.id
+                  })
+                }
+              )
+            })
             
             publishedTweets.push({
               id: response.data.id,
@@ -134,29 +146,61 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         console.error(`❌ Failed to publish scheduled content ${content.id}:`, error)
         
-        // Mark as failed
-        await prisma.scheduledContent.update({
-          where: { id: content.id },
-          data: {
-            status: 'failed',
-            errorMessage: error instanceof Error ? error.message : 'Unknown error'
-          }
-        })
+        // Check if it's a circuit breaker error
+        const isCircuitBreakerError = error instanceof Error && error.message.includes('Circuit breaker is OPEN')
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        
+        if (isCircuitBreakerError) {
+          console.log('⚡ Circuit breaker is open, scheduling retry for later')
+          // Reschedule for 10 minutes later instead of marking as failed
+          await prisma.scheduledContent.update({
+            where: { id: content.id },
+            data: {
+              status: 'scheduled',
+              scheduledFor: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes later
+              errorMessage: errorMessage
+            }
+          })
+          
+          results.push({
+            contentId: content.id,
+            status: 'rescheduled',
+            reason: 'circuit_breaker_open',
+            nextAttempt: new Date(Date.now() + 10 * 60 * 1000).toISOString()
+          })
+        } else {
+          // Mark as failed
+          await prisma.scheduledContent.update({
+            where: { id: content.id },
+            data: {
+              status: 'failed',
+              errorMessage: errorMessage
+            }
+          })
 
-        results.push({
-          contentId: content.id,
-          status: 'failed',
-          error: error instanceof Error ? error.message : 'Unknown error'
-        })
+          results.push({
+            contentId: content.id,
+            status: 'failed',
+            error: errorMessage
+          })
+        }
       }
     }
 
     console.log(`✅ Processed ${results.length} scheduled items`)
 
+    // Log circuit breaker states
+    const circuitBreakerStates = {
+      postTweet: twitterCircuitBreakers.postTweet.getState(),
+      tokenRefresh: twitterCircuitBreakers.tokenRefresh.getState(),
+      userLookup: twitterCircuitBreakers.userLookup.getState()
+    }
+
     return NextResponse.json({
       success: true,
       processed: results.length,
-      results
+      results,
+      circuitBreakerStates
     })
 
   } catch (error) {

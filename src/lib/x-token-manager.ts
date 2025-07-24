@@ -135,7 +135,7 @@ export class XTokenManager {
     console.log(`🔄 Refreshing tokens for @${xAccount.username}...`)
     
     // Call X API to refresh token
-    const tokenResponse = await xApiClient.refreshToken(currentRefreshToken)
+    const tokenResponse = await xApiClient.refreshToken(currentRefreshToken, xAccount.id)
     
     if (!tokenResponse.access_token) {
       throw new Error('No access token received from refresh')

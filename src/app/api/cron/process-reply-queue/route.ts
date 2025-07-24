@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { xApiClient } from '@/lib/x-api'
 import { XTokenManager } from '@/lib/x-token-manager'
+import { twitterCircuitBreakers } from '@/lib/circuit-breaker'
 
 export async function POST(request: NextRequest) {
   try {
@@ -73,16 +74,19 @@ export async function POST(request: NextRequest) {
 
         console.log(`📤 Posting reply to Twitter tweet ID: ${twitterTweetId} for @${reply.xAccount.username}`)
 
-        // Post reply with automatic token refresh handling
-        const response = await XTokenManager.withTokenRefresh(
-          reply.xAccount.id,
-          async (accessToken: string) => {
-            return await xApiClient.postTweet(reply.replyContent, {
-              replyToTweetId: twitterTweetId, // This is the actual Twitter tweet ID (numeric string)
-              accessToken: accessToken
-            })
-          }
-        )
+        // Post reply with automatic token refresh handling and circuit breaker
+        const response = await twitterCircuitBreakers.postTweet.execute(async () => {
+          return await XTokenManager.withTokenRefresh(
+            reply.xAccount.id,
+            async (accessToken: string) => {
+              return await xApiClient.postTweet(reply.replyContent, {
+                replyToTweetId: twitterTweetId, // This is the actual Twitter tweet ID (numeric string)
+                accessToken: accessToken,
+                userId: reply.user.id
+              })
+            }
+          )
+        })
 
         // Mark as sent
         await prisma.replyQueue.update({

@@ -58,17 +58,32 @@ export class EnhancedTweetScheduler {
 
     console.log(`🔗 Scheduler calling: ${url}`)
 
-    const response = await fetch(url, {
-      method: 'POST',
-      ...options,
-      headers
-    })
+    // Create an AbortController for timeout
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
 
-    if (!response.ok) {
-      throw new Error(`Request failed: ${response.status} ${response.statusText}`)
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        ...options,
+        headers,
+        signal: controller.signal
+      })
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        throw new Error(`Request failed: ${response.status} ${response.statusText}`)
+      }
+
+      return response.json()
+    } catch (error) {
+      clearTimeout(timeoutId)
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout after 30 seconds')
+      }
+      throw error
     }
-
-    return response.json()
   }
 
   private async processScheduledTweets(): Promise<any> {

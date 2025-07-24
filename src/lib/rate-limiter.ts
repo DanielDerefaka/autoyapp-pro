@@ -1,339 +1,266 @@
-/**
- * Enhanced rate limiting system with database fallback
- * Ensures X ToS compliance with proper rate limiting
- */
+import { ErrorLogger } from './error-logger';
 
-import { prisma } from './prisma'
-import { RedisCache } from './redis'
-
-interface RateLimitResult {
-  allowed: boolean
-  remaining: number
-  resetTime: number
-  message?: string
+interface RateLimit {
+  requests: number;
+  windowMs: number;
+  resetTime: number;
 }
 
-interface UserLimits {
-  repliesPerHour: number
-  repliesPerDay: number
-  minDelayBetweenReplies: number // seconds
-  minDelayToSameTarget: number // seconds
+interface RetryConfig {
+  maxRetries: number;
+  baseDelay: number;
+  maxDelay: number;
+  backoffMultiplier: number;
 }
 
 export class RateLimiter {
-  // Default X-compliant limits
-  static readonly DEFAULT_LIMITS: UserLimits = {
-    repliesPerHour: 25, // Conservative limit
-    repliesPerDay: 150, // Conservative limit
-    minDelayBetweenReplies: 300, // 5 minutes
-    minDelayToSameTarget: 1800, // 30 minutes
+  private limits: Map<string, RateLimit> = new Map();
+  private requestCounts: Map<string, { count: number; resetTime: number }> = new Map();
+
+  constructor() {
+    // Twitter API v2 rate limits (per 15-minute window)
+    this.setLimit('tweets/post', 300, 15 * 60 * 1000); // 300 posts per 15 minutes
+    this.setLimit('tweets/lookup', 300, 15 * 60 * 1000); // 300 requests per 15 minutes
+    this.setLimit('users/lookup', 300, 15 * 60 * 1000); // 300 requests per 15 minutes
+    this.setLimit('search/recent', 180, 15 * 60 * 1000); // 180 requests per 15 minutes
   }
 
-  /**
-   * Check if user can send a reply with comprehensive rate limiting
-   */
-  static async checkReplyRateLimit(
-    userId: string, 
-    targetUserId?: string
-  ): Promise<RateLimitResult> {
-    try {
-      // Get user limits (from autopilot settings or defaults)
-      const userLimits = await this.getUserLimits(userId)
+  private setLimit(endpoint: string, requests: number, windowMs: number) {
+    this.limits.set(endpoint, {
+      requests,
+      windowMs,
+      resetTime: Date.now() + windowMs,
+    });
+  }
+
+  async checkLimit(endpoint: string): Promise<{ allowed: boolean; resetTime?: number; remaining?: number }> {
+    const limit = this.limits.get(endpoint);
+    if (!limit) {
+      // No limit defined, allow request
+      return { allowed: true };
+    }
+
+    const now = Date.now();
+    const key = `${endpoint}:${Math.floor(now / limit.windowMs)}`;
+    
+    let requestData = this.requestCounts.get(key);
+    
+    if (!requestData || now >= requestData.resetTime) {
+      // Reset window
+      requestData = {
+        count: 0,
+        resetTime: now + limit.windowMs,
+      };
+      this.requestCounts.set(key, requestData);
+    }
+
+    if (requestData.count >= limit.requests) {
+      return {
+        allowed: false,
+        resetTime: requestData.resetTime,
+        remaining: 0,
+      };
+    }
+
+    // Increment count
+    requestData.count++;
+    this.requestCounts.set(key, requestData);
+
+    return {
+      allowed: true,
+      remaining: limit.requests - requestData.count,
+    };
+  }
+
+  async waitForReset(endpoint: string): Promise<void> {
+    const limit = this.limits.get(endpoint);
+    if (!limit) return;
+
+    const now = Date.now();
+    const key = `${endpoint}:${Math.floor(now / limit.windowMs)}`;
+    const requestData = this.requestCounts.get(key);
+
+    if (requestData && requestData.resetTime > now) {
+      const waitTime = requestData.resetTime - now;
+      console.log(`Rate limit hit for ${endpoint}. Waiting ${waitTime}ms until reset...`);
       
-      // Check hourly limit
-      const hourlyCheck = await this.checkHourlyLimit(userId, userLimits.repliesPerHour)
-      if (!hourlyCheck.allowed) {
-        return {
-          ...hourlyCheck,
-          message: 'Hourly reply limit exceeded'
-        }
-      }
-
-      // Check daily limit
-      const dailyCheck = await this.checkDailyLimit(userId, userLimits.repliesPerDay)
-      if (!dailyCheck.allowed) {
-        return {
-          ...dailyCheck,
-          message: 'Daily reply limit exceeded'
-        }
-      }
-
-      // Check minimum delay between any replies
-      const delayCheck = await this.checkMinDelayBetweenReplies(userId, userLimits.minDelayBetweenReplies)
-      if (!delayCheck.allowed) {
-        return {
-          ...delayCheck,
-          message: `Must wait ${Math.ceil(delayCheck.resetTime - Date.now()) / 1000 / 60} minutes between replies`
-        }
-      }
-
-      // Check minimum delay to same target
-      if (targetUserId) {
-        const targetDelayCheck = await this.checkMinDelayToSameTarget(
-          userId, 
-          targetUserId, 
-          userLimits.minDelayToSameTarget
-        )
-        if (!targetDelayCheck.allowed) {
-          return {
-            ...targetDelayCheck,
-            message: `Must wait ${Math.ceil(targetDelayCheck.resetTime - Date.now()) / 1000 / 60} minutes before replying to same user again`
-          }
-        }
-      }
-
-      return {
-        allowed: true,
-        remaining: Math.min(hourlyCheck.remaining, dailyCheck.remaining),
-        resetTime: Math.min(hourlyCheck.resetTime, dailyCheck.resetTime)
-      }
-
-    } catch (error) {
-      console.error('Rate limit check failed:', error)
-      // Fail safe - allow the request but log the error
-      return {
-        allowed: true,
-        remaining: 1,
-        resetTime: Date.now() + 3600000,
-        message: 'Rate limit check failed - allowing request'
-      }
+      await new Promise(resolve => setTimeout(resolve, waitTime));
     }
   }
 
-  /**
-   * Record a successful reply for rate limiting tracking
-   */
-  static async recordReply(userId: string, targetUserId?: string): Promise<void> {
-    try {
-      const now = Date.now()
+  getTimeUntilReset(endpoint: string): number {
+    const limit = this.limits.get(endpoint);
+    if (!limit) return 0;
 
-      // Record in Redis for fast access
-      await Promise.all([
-        RedisCache.set(`last_reply:${userId}`, now, 3600), // 1 hour TTL
-        targetUserId ? RedisCache.set(`last_reply_to:${userId}:${targetUserId}`, now, 7200) : Promise.resolve(), // 2 hours TTL
+    const now = Date.now();
+    const key = `${endpoint}:${Math.floor(now / limit.windowMs)}`;
+    const requestData = this.requestCounts.get(key);
+
+    if (!requestData) return 0;
+    
+    return Math.max(0, requestData.resetTime - now);
+  }
+}
+
+export class RetryHandler {
+  private defaultConfig: RetryConfig = {
+    maxRetries: 3,
+    baseDelay: 1000,
+    maxDelay: 30000,
+    backoffMultiplier: 2,
+  };
+
+  async executeWithRetry<T>(
+    operation: () => Promise<T>,
+    config?: Partial<RetryConfig>,
+    context?: { operation: string; userId?: string }
+  ): Promise<T> {
+    const finalConfig = { ...this.defaultConfig, ...config };
+    let lastError: Error;
+
+    for (let attempt = 0; attempt <= finalConfig.maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error as Error;
         
-        // Also update database for persistence
-        prisma.engagementAnalytics.create({
-          data: {
-            userId,
-            targetUserId,
-            engagementType: 'reply_sent_tracking',
-            engagementValue: 1,
+        // Check if it's a rate limit error
+        if (this.isRateLimitError(error)) {
+          const resetTime = this.extractResetTime(error);
+          if (resetTime && attempt < finalConfig.maxRetries) {
+            console.log(`Rate limit hit on attempt ${attempt + 1}. Waiting until reset...`);
+            await this.waitUntil(resetTime);
+            continue;
           }
-        })
-      ])
-
-    } catch (error) {
-      console.error('Failed to record reply for rate limiting:', error)
-    }
-  }
-
-  /**
-   * Get user-specific rate limits
-   */
-  private static async getUserLimits(userId: string): Promise<UserLimits> {
-    try {
-      const autopilotSettings = await prisma.autopilotSettings.findUnique({
-        where: { userId }
-      })
-
-      if (autopilotSettings) {
-        return {
-          repliesPerHour: autopilotSettings.maxRepliesPerHour,
-          repliesPerDay: autopilotSettings.maxRepliesPerDay,
-          minDelayBetweenReplies: autopilotSettings.minDelayBetweenReplies,
-          minDelayToSameTarget: autopilotSettings.minDelayToSameUser,
         }
-      }
 
-      return this.DEFAULT_LIMITS
-    } catch (error) {
-      console.error('Failed to get user limits:', error)
-      return this.DEFAULT_LIMITS
-    }
-  }
-
-  /**
-   * Check hourly reply limit
-   */
-  private static async checkHourlyLimit(userId: string, limit: number): Promise<RateLimitResult> {
-    const hourKey = `replies_hour:${userId}:${Math.floor(Date.now() / 3600000)}`
-    
-    try {
-      return await RedisCache.checkRateLimit(hourKey, limit, 3600)
-    } catch (error) {
-      // Database fallback - count replies in the last hour
-      const hourAgo = new Date(Date.now() - 3600000)
-      const replyCount = await prisma.replyQueue.count({
-        where: {
-          userId,
-          sentAt: { gte: hourAgo },
-          status: 'sent'
+        // Check if it's a retryable error
+        if (!this.isRetryableError(error) || attempt === finalConfig.maxRetries) {
+          break;
         }
-      })
 
-      return {
-        allowed: replyCount < limit,
-        remaining: Math.max(0, limit - replyCount),
-        resetTime: Math.ceil(Date.now() / 3600000) * 3600000
+        // Calculate delay with exponential backoff
+        const delay = Math.min(
+          finalConfig.baseDelay * Math.pow(finalConfig.backoffMultiplier, attempt),
+          finalConfig.maxDelay
+        );
+
+        console.log(`Attempt ${attempt + 1} failed. Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
-  }
 
-  /**
-   * Check daily reply limit
-   */
-  private static async checkDailyLimit(userId: string, limit: number): Promise<RateLimitResult> {
-    const dayKey = `replies_day:${userId}:${Math.floor(Date.now() / 86400000)}`
-    
-    try {
-      return await RedisCache.checkRateLimit(dayKey, limit, 86400)
-    } catch (error) {
-      // Database fallback - count replies in the last 24 hours
-      const dayAgo = new Date(Date.now() - 86400000)
-      const replyCount = await prisma.replyQueue.count({
-        where: {
-          userId,
-          sentAt: { gte: dayAgo },
-          status: 'sent'
-        }
-      })
-
-      return {
-        allowed: replyCount < limit,
-        remaining: Math.max(0, limit - replyCount),
-        resetTime: Math.ceil(Date.now() / 86400000) * 86400000
-      }
-    }
-  }
-
-  /**
-   * Check minimum delay between any replies
-   */
-  private static async checkMinDelayBetweenReplies(userId: string, minDelaySeconds: number): Promise<RateLimitResult> {
-    try {
-      const lastReplyTime = await RedisCache.get<number>(`last_reply:${userId}`)
-      
-      if (!lastReplyTime) {
-        return { allowed: true, remaining: 1, resetTime: Date.now() }
-      }
-
-      const timeSinceLastReply = Date.now() - lastReplyTime
-      const minDelayMs = minDelaySeconds * 1000
-
-      if (timeSinceLastReply >= minDelayMs) {
-        return { allowed: true, remaining: 1, resetTime: Date.now() }
-      }
-
-      return {
-        allowed: false,
-        remaining: 0,
-        resetTime: lastReplyTime + minDelayMs
-      }
-
-    } catch (error) {
-      // Database fallback
-      const lastReply = await prisma.replyQueue.findFirst({
-        where: { 
-          userId, 
-          status: 'sent',
-          sentAt: { not: null }
+    // Log the final error
+    if (context) {
+      await ErrorLogger.logApiError({
+        error: lastError,
+        userId: context.userId,
+        metadata: {
+          operation: context.operation,
+          finalAttempt: true,
+          totalAttempts: finalConfig.maxRetries + 1,
         },
-        orderBy: { sentAt: 'desc' }
-      })
-
-      if (!lastReply?.sentAt) {
-        return { allowed: true, remaining: 1, resetTime: Date.now() }
-      }
-
-      const timeSinceLastReply = Date.now() - lastReply.sentAt.getTime()
-      const minDelayMs = minDelaySeconds * 1000
-
-      return {
-        allowed: timeSinceLastReply >= minDelayMs,
-        remaining: timeSinceLastReply >= minDelayMs ? 1 : 0,
-        resetTime: lastReply.sentAt.getTime() + minDelayMs
-      }
+      });
     }
+
+    throw lastError;
   }
 
-  /**
-   * Check minimum delay before replying to the same target again
-   */
-  private static async checkMinDelayToSameTarget(
-    userId: string, 
-    targetUserId: string, 
-    minDelaySeconds: number
-  ): Promise<RateLimitResult> {
-    try {
-      const lastReplyTime = await RedisCache.get<number>(`last_reply_to:${userId}:${targetUserId}`)
-      
-      if (!lastReplyTime) {
-        return { allowed: true, remaining: 1, resetTime: Date.now() }
-      }
-
-      const timeSinceLastReply = Date.now() - lastReplyTime
-      const minDelayMs = minDelaySeconds * 1000
-
-      if (timeSinceLastReply >= minDelayMs) {
-        return { allowed: true, remaining: 1, resetTime: Date.now() }
-      }
-
-      return {
-        allowed: false,
-        remaining: 0,
-        resetTime: lastReplyTime + minDelayMs
-      }
-
-    } catch (error) {
-      // Database fallback
-      const lastReply = await prisma.replyQueue.findFirst({
-        where: { 
-          userId, 
-          status: 'sent',
-          sentAt: { not: null },
-          tweet: {
-            targetUserId: targetUserId
-          }
-        },
-        orderBy: { sentAt: 'desc' }
-      })
-
-      if (!lastReply?.sentAt) {
-        return { allowed: true, remaining: 1, resetTime: Date.now() }
-      }
-
-      const timeSinceLastReply = Date.now() - lastReply.sentAt.getTime()
-      const minDelayMs = minDelaySeconds * 1000
-
-      return {
-        allowed: timeSinceLastReply >= minDelayMs,
-        remaining: timeSinceLastReply >= minDelayMs ? 1 : 0,
-        resetTime: lastReply.sentAt.getTime() + minDelayMs
-      }
-    }
+  private isRateLimitError(error: any): boolean {
+    if (error?.message?.includes('429')) return true;
+    if (error?.status === 429) return true;
+    if (error?.message?.toLowerCase().includes('rate limit')) return true;
+    if (error?.message?.toLowerCase().includes('too many requests')) return true;
+    return false;
   }
 
-  /**
-   * Calculate optimal delay for scheduling a reply based on rate limits
-   */
-  static async calculateOptimalDelay(userId: string, targetUserId?: string): Promise<number> {
-    try {
-      const rateLimitCheck = await this.checkReplyRateLimit(userId, targetUserId)
-      
-      if (rateLimitCheck.allowed) {
-        // Add small random delay to avoid patterns (1-3 minutes)
-        return Math.random() * 120000 + 60000
-      } else {
-        // Schedule for after the rate limit resets, plus small buffer
-        const delayUntilReset = rateLimitCheck.resetTime - Date.now()
-        const bufferTime = Math.random() * 60000 + 30000 // 30s-90s buffer
-        return Math.max(0, delayUntilReset + bufferTime)
-      }
-    } catch (error) {
-      console.error('Failed to calculate optimal delay:', error)
-      // Default to 5-10 minute delay
-      return Math.random() * 300000 + 300000
+  private isRetryableError(error: any): boolean {
+    // Rate limit errors are retryable
+    if (this.isRateLimitError(error)) return true;
+    
+    // Server errors (5xx) are retryable
+    if (error?.status >= 500 && error?.status < 600) return true;
+    if (error?.message?.includes('5')) return true;
+    
+    // Network errors are retryable
+    if (error?.code === 'ECONNRESET') return true;
+    if (error?.code === 'ETIMEDOUT') return true;
+    if (error?.message?.toLowerCase().includes('network')) return true;
+    if (error?.message?.toLowerCase().includes('timeout')) return true;
+    
+    return false;
+  }
+
+  private extractResetTime(error: any): number | null {
+    // Try to extract reset time from X-RateLimit-Reset header
+    if (error?.headers?.['x-ratelimit-reset']) {
+      return parseInt(error.headers['x-ratelimit-reset']) * 1000;
+    }
+    
+    // Default to 15 minutes from now (typical Twitter window)
+    return Date.now() + (15 * 60 * 1000);
+  }
+
+  private async waitUntil(resetTime: number): Promise<void> {
+    const now = Date.now();
+    const waitTime = Math.max(0, resetTime - now);
+    
+    if (waitTime > 0) {
+      console.log(`Waiting ${Math.round(waitTime / 1000)}s until rate limit reset...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
     }
   }
 }
+
+// Global instances
+export const rateLimiter = new RateLimiter();
+export const retryHandler = new RetryHandler();
+
+// Utility function to wrap API calls with rate limiting and retry logic
+export async function withRateLimit<T>(
+  endpoint: string,
+  operation: () => Promise<T>,
+  context?: { operation: string; userId?: string }
+): Promise<T> {
+  // Check rate limit first
+  const limitCheck = await rateLimiter.checkLimit(endpoint);
+  
+  if (!limitCheck.allowed) {
+    console.log(`Rate limit exceeded for ${endpoint}. Waiting for reset...`);
+    await rateLimiter.waitForReset(endpoint);
+  }
+
+  // Execute with retry logic
+  return retryHandler.executeWithRetry(operation, undefined, context);
+}
+
+// Specific Twitter API wrappers
+export const TwitterRateLimits = {
+  async postTweet<T>(operation: () => Promise<T>, userId?: string): Promise<T> {
+    return withRateLimit('tweets/post', operation, {
+      operation: 'postTweet',
+      userId,
+    });
+  },
+
+  async lookupTweet<T>(operation: () => Promise<T>, userId?: string): Promise<T> {
+    return withRateLimit('tweets/lookup', operation, {
+      operation: 'lookupTweet',
+      userId,
+    });
+  },
+
+  async lookupUser<T>(operation: () => Promise<T>, userId?: string): Promise<T> {
+    return withRateLimit('users/lookup', operation, {
+      operation: 'lookupUser',
+      userId,
+    });
+  },
+
+  async searchTweets<T>(operation: () => Promise<T>, userId?: string): Promise<T> {
+    return withRateLimit('search/recent', operation, {
+      operation: 'searchTweets',
+      userId,
+    });
+  },
+};

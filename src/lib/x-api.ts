@@ -3,6 +3,7 @@ import crypto from 'crypto'
 // import { scrapeLimiter } from './scrape-limiter'
 // import { AlternativeDataSources } from './alternative-sources'
 import { rapidApiTwitterClient } from './rapidapi-twitter'
+import { TwitterRateLimits } from './rate-limiter'
 
 interface XApiConfig {
   apiKey: string
@@ -184,41 +185,50 @@ export class XApiClient {
       replyToTweetId?: string
       accessToken: string
       mediaIds?: string[]
+      userId?: string
     }
   ): Promise<{ data: { id: string; text: string } }> {
-    const body: any = { text }
-    
-    if (options.replyToTweetId) {
-      body.reply = {
-        in_reply_to_tweet_id: options.replyToTweetId
+    return TwitterRateLimits.postTweet(async () => {
+      const body: any = { text }
+      
+      if (options.replyToTweetId) {
+        body.reply = {
+          in_reply_to_tweet_id: options.replyToTweetId
+        }
       }
-    }
 
-    if (options.mediaIds && options.mediaIds.length > 0) {
-      body.media = {
-        media_ids: options.mediaIds
+      if (options.mediaIds && options.mediaIds.length > 0) {
+        body.media = {
+          media_ids: options.mediaIds
+        }
       }
-    }
 
-    // Use OAuth 2.0 User Context for posting tweets
-    const url = `${this.baseUrl}/tweets`
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${options.accessToken}` // User access token
-      },
-      body: JSON.stringify(body)
-    })
+      // Use OAuth 2.0 User Context for posting tweets
+      const url = `${this.baseUrl}/tweets`
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${options.accessToken}` // User access token
+        },
+        body: JSON.stringify(body)
+      })
 
-    if (!response.ok) {
-      const error = await response.text()
-      console.error('X API Error Response:', error)
-      throw new Error(`X API error: ${response.status} - ${error}`)
-    }
+      if (!response.ok) {
+        const error = await response.text()
+        console.error('X API Error Response:', error)
+        
+        // Create error object with status and headers for rate limiting
+        const apiError = new Error(`X API error: ${response.status} - ${error}`) as any;
+        apiError.status = response.status;
+        apiError.headers = Object.fromEntries(response.headers.entries());
+        
+        throw apiError;
+      }
 
-    return response.json()
+      return response.json()
+    }, options.userId);
   }
 
   async deleteTweet(
@@ -457,30 +467,36 @@ export class XApiClient {
     return response.json()
   }
 
-  async refreshToken(refreshToken: string) {
-    const params = new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-      client_id: this.config.clientId!,
-    })
+  async refreshToken(refreshToken: string, userId?: string) {
+    // Token refresh doesn't typically have the same rate limits, but we'll add light protection
+    return TwitterRateLimits.lookupUser(async () => {
+      const params = new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: this.config.clientId!,
+      })
 
-    const response = await fetch('https://api.twitter.com/2/oauth2/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Authorization: `Basic ${Buffer.from(
-          `${this.config.clientId}:${this.config.clientSecret}`
-        ).toString('base64')}`,
-      },
-      body: params.toString(),
-    })
+      const response = await fetch('https://api.twitter.com/2/oauth2/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Authorization: `Basic ${Buffer.from(
+            `${this.config.clientId}:${this.config.clientSecret}`
+          ).toString('base64')}`,
+        },
+        body: params.toString(),
+      })
 
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`Token refresh failed: ${error}`)
-    }
+      if (!response.ok) {
+        const error = await response.text()
+        const apiError = new Error(`Token refresh failed: ${error}`) as any;
+        apiError.status = response.status;
+        apiError.headers = Object.fromEntries(response.headers.entries());
+        throw apiError;
+      }
 
-    return response.json()
+      return response.json()
+    }, userId);
   }
 }
 
